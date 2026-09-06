@@ -154,6 +154,11 @@ export function PostingDrawer({
                       quality {p.target_quality} · chance {p.chance} · comp {p.comp_vs_baseline}
                     </span>
                   </div>
+                  {p.area_reason && (
+                    <p style={{ margin: "6px 0", fontSize: 13 }} className="muted">
+                      area: {p.area_reason}
+                    </p>
+                  )}
                   <p style={{ margin: "8px 0" }}>{p.overall}</p>
                   {gaps && gaps.length > 0 && (
                     <div className="muted" style={{ fontSize: 12 }}>
@@ -161,7 +166,7 @@ export function PostingDrawer({
                     </div>
                   )}
                   <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-                    assessed {p.assessed_at}
+                    <span className="pill">{p.assessed_model ?? "?"}</span> · assessed {p.assessed_at}
                   </div>
                 </>
               ) : (

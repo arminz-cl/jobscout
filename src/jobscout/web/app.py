@@ -96,7 +96,8 @@ def query_groups():
 class StartRun(BaseModel):
     groups: list[str] | None = None       # None -> the active-mode groups
     since: str | None = None              # "24h" | "7d" | "30d" | None (auto)
-    phase: str = "full"                   # "cards" | "descriptions" | "full"
+    phase: str = "full"                   # "cards" | "descriptions" | "full" | "assess"
+    then_assess: bool = False             # chain assessment after a cards/full run
 
 
 @app.get("/api/runs")
@@ -132,12 +133,34 @@ def runner_state():
 @app.post("/api/runs")
 def start_run(body: StartRun):
     try:
-        run_id = runner.start_fetch(body.groups, body.since, phase=body.phase)
+        run_id = runner.start_fetch(
+            body.groups, body.since, phase=body.phase, then_assess=body.then_assess
+        )
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from e
     except ConfigError as e:
         raise HTTPException(400, str(e)) from e
     return {"run_id": run_id}
+
+
+@app.get("/api/assessor")
+def assessor_info():
+    """Assessor config + how many postings are waiting to be scored."""
+    try:
+        cfg = load()
+    except ConfigError as e:
+        raise HTTPException(400, str(e)) from e
+    conn = db.connect(cfg.db_path)
+    pending = len(db.postings_pending_assessment(conn))
+    ac = cfg.assessor
+    return {
+        "configured": ac is not None,
+        "provider": ac.provider if ac else None,
+        "model": ac.model if ac else None,
+        "model_tag": ac.model_tag if ac else None,
+        "has_key": bool(ac and ac.api_key) if ac else False,
+        "pending": pending,
+    }
 
 
 @app.post("/api/runs/{run_id}/stop")
@@ -196,6 +219,7 @@ def posting_facets():
         "SELECT COUNT(*) FROM postings WHERE description IS NOT NULL AND description != ''"
     ).fetchone()[0]
     assessed = conn.execute("SELECT COUNT(*) FROM assessments").fetchone()[0]
+    pending_assessment = len(db.postings_pending_assessment(conn))
     unseen = conn.execute("SELECT COUNT(*) FROM postings WHERE seen_at IS NULL").fetchone()[0]
     starred = conn.execute("SELECT COUNT(*) FROM postings WHERE starred = 1").fetchone()[0]
     by_group = []
@@ -231,6 +255,7 @@ def posting_facets():
         "with_description": with_desc,
         "without_description": total - with_desc,
         "assessed": assessed,
+        "pending_assessment": pending_assessment,
         "unseen": unseen,
         "starred": starred,
         "by_group": by_group,
@@ -331,16 +356,25 @@ def set_status(posting_id: int, body: SetStatus):
 
 @app.post("/api/postings/{posting_id}/assess")
 def assess_one(posting_id: int):
-    try:
-        from ..assess import assess_posting  # type: ignore
-    except ImportError as e:
-        raise HTTPException(501, "assessor not yet implemented (Phase 3)") from e
+    from ..assess import AssessError, assess_posting
+
     cfg = load()
     conn = db.connect(cfg.db_path)
     row = db.get_posting(conn, posting_id)
     if not row:
         raise HTTPException(404, "no such posting")
-    assess_posting(conn, cfg, posting_id)
+    if not (row["description"] or "").strip():
+        # fetch the JD inline, then assess
+        from ..fetch import fetch_one_description
+
+        try:
+            fetch_one_description(conn, cfg, posting_id)
+        except Exception as e:
+            raise HTTPException(502, f"could not fetch description: {e}") from e
+    try:
+        assess_posting(conn, cfg, posting_id)
+    except AssessError as e:
+        raise HTTPException(502, f"assessment failed: {e}") from e
     return _row(db.get_posting(conn, posting_id))
 
 

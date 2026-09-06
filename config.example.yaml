@@ -13,6 +13,17 @@ paths:
 model: "claude-sonnet-5"
 temperature: 0
 
+# The assessor scores each posting against the rubric. Pluggable provider:
+#   openai_compat — Groq / Gemini / OpenRouter free tiers (OpenAI-style API).
+#                   Key in .env as ASSESSOR_API_KEY (or GROQ_API_KEY).
+#   claude        — Anthropic SDK; key in .env as ANTHROPIC_API_KEY. `pip install -e ".[claude]"`.
+#   ollama        — local, no key (http://localhost:11434/v1 by default).
+assessor:
+  provider: openai_compat
+  model: "llama-3.3-70b-versatile"
+  base_url: "https://api.groq.com/openai/v1"
+  temperature: 0
+
 # --- Job source -------------------------------------------------------------
 source: linkedin_guest        # linkedin_guest | jsearch
 request_delay_sec: [2, 4]     # polite random delay between requests

@@ -44,6 +44,7 @@ class Assessment:
 
     posting_id: int
     area: str                             # A | B | C | D
+    area_reason: str                      # one clause — why this area (read-the-JD)
     target_quality: str                   # high | med | low
     chance: str                           # high | med | low
     verdict: str                          # pursue | maybe | skip
@@ -51,5 +52,5 @@ class Assessment:
     keep_de_titles: bool
     gaps_hit: list[str]
     comp_vs_baseline: str                 # above | within | below | unknown
-    model: str
+    model: str                            # full identifier, e.g. "groq/llama-3.3-70b-versatile"
     assessed_at: str = field(default_factory=now_iso)

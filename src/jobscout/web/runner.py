@@ -51,13 +51,19 @@ def stop(run_id: int | None = None) -> bool:
         return True
 
 
-_PHASES = {"cards", "descriptions", "full"}
+_PHASES = {"cards", "descriptions", "full", "assess"}
 
 
 def start_fetch(
-    groups: list[str] | None, since: str | None, *, phase: str = "full"
+    groups: list[str] | None,
+    since: str | None,
+    *,
+    phase: str = "full",
+    then_assess: bool = False,
 ) -> int:
-    """phase: 'cards' (searches only), 'descriptions' (backfill only), 'full' (both)."""
+    """phase: 'cards' (searches only), 'descriptions' (backfill only), 'full' (both),
+    'assess' (score pending postings, no fetch). `then_assess` chains assessment
+    after a cards/full run."""
     global _current
     if phase not in _PHASES:
         raise RuntimeError(f"phase must be one of {sorted(_PHASES)}")
@@ -66,45 +72,49 @@ def start_fetch(
             raise RuntimeError(f"a {_current.kind} run (#{_current.run_id}) is already in progress")
 
         cfg = load()
-        # None means "the active-mode groups" — record them concretely on the run
         effective_groups = groups if groups is not None else list(cfg.mode_groups)
-        do_cards = phase in ("cards", "full")
         conn = db.connect(cfg.db_path)
         last_run = db.last_successful_run_iso(conn, cfg.source)
         window = resolve_window(cfg, since, last_run)
+        kind = {"assess": "assess", "cards": "fetch", "full": "fetch"}.get(phase, "backfill")
         run_id = db.start_run(
-            conn, cfg.source, cfg.mode, window,
-            groups=effective_groups, kind=("fetch" if do_cards else "backfill"),
+            conn, cfg.source, cfg.mode, window, groups=effective_groups, kind=kind
         )
         conn.close()
 
         cancel = threading.Event()
         thread = threading.Thread(
-            target=_run_fetch_job,
-            args=(cfg, run_id, effective_groups, since, phase, cancel),
+            target=_run_job,
+            args=(cfg, run_id, effective_groups, since, phase, then_assess, cancel),
             name=f"jobscout-{phase}-{run_id}",
             daemon=True,
         )
-        _current = JobState(run_id, "fetch" if do_cards else "backfill", effective_groups, thread, cancel)
+        _current = JobState(run_id, kind, effective_groups, thread, cancel)
         thread.start()
         return run_id
 
 
-def _run_fetch_job(
+def _run_job(
     cfg: Config,
     run_id: int,
     groups: list[str] | None,
     since: str | None,
     phase: str,
+    then_assess: bool,
     cancel: threading.Event,
 ) -> None:
     conn = db.connect(cfg.db_path)
     try:
-        run_fetch(
-            conn, cfg, groups=groups, since=since, verbose=True, run_id=run_id, cancel=cancel,
-            do_cards=phase in ("cards", "full"),
-            skip_descriptions=phase == "cards",
-        )
+        if phase == "assess":
+            _assess(conn, cfg, run_id, cancel, scope_run_id=None)
+        else:
+            result = run_fetch(
+                conn, cfg, groups=groups, since=since, verbose=True, run_id=run_id, cancel=cancel,
+                do_cards=phase in ("cards", "full"),
+                skip_descriptions=phase == "cards",
+            )
+            if then_assess and not (cancel and cancel.is_set()):
+                _assess(conn, cfg, run_id, cancel, scope_run_id=result.run_id)
     except Exception as e:  # noqa: BLE001 - surface any failure to the UI
         traceback.print_exc()
         db.finish_run(conn, run_id, status="failed", counts={}, note=f"{type(e).__name__}: {e}")
@@ -113,3 +123,25 @@ def _run_fetch_job(
                 _current.error = str(e)
     finally:
         conn.close()
+
+
+def _assess(conn, cfg, run_id, cancel, *, scope_run_id) -> None:
+    from ..assess import assess_pending
+
+    total_holder = {}
+
+    def progress(done, failed, total):
+        total_holder["t"] = total
+        db.update_run_progress(
+            conn, run_id, {"assessed": done}, note=f"assessing {done}/{total} ({failed} failed)"
+        )
+
+    res = assess_pending(
+        conn, cfg, run_id=scope_run_id, progress=progress, cancel=cancel
+    )
+    status = "stopped" if (cancel and cancel.is_set()) else "ok"
+    db.finish_run(
+        conn, run_id, status=status,
+        counts={"assessed": res["assessed"]},
+        note=f"assessed {res['assessed']}, {res['failed']} failed",
+    )

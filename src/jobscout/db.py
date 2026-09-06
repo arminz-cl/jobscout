@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS assessments (
     id               INTEGER PRIMARY KEY,
     posting_id       INTEGER NOT NULL REFERENCES postings(id),
     area             TEXT,
+    area_reason      TEXT,
     target_quality   TEXT,
     chance           TEXT,
     verdict          TEXT,
@@ -90,6 +91,7 @@ _MIGRATIONS = [
     "ALTER TABLE postings ADD COLUMN first_run_id INTEGER",
     "ALTER TABLE postings ADD COLUMN workplace_type TEXT",
     "ALTER TABLE postings ADD COLUMN matched_group TEXT",
+    "ALTER TABLE assessments ADD COLUMN area_reason TEXT",
 ]
 
 
@@ -155,12 +157,55 @@ def postings_missing_description(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+# -- assessments --------------------------------------------------------------
+
+
+def postings_pending_assessment(
+    conn: sqlite3.Connection, *, run_id: int | None = None, limit: int | None = None
+) -> list[sqlite3.Row]:
+    """Postings that have a description but no assessment yet."""
+    sql = (
+        "SELECT p.* FROM postings p LEFT JOIN assessments a ON a.posting_id = p.id "
+        "WHERE a.id IS NULL AND p.description IS NOT NULL AND p.description != ''"
+    )
+    params: list = []
+    if run_id is not None:
+        sql += " AND p.first_run_id = ?"
+        params.append(run_id)
+    sql += " ORDER BY p.first_seen_at DESC"
+    if limit:
+        sql += " LIMIT ?"
+        params.append(limit)
+    return conn.execute(sql, params).fetchall()
+
+
+def store_assessment(conn: sqlite3.Connection, a) -> None:
+    """Upsert one Assessment (see models.Assessment)."""
+    conn.execute(
+        "INSERT INTO assessments (posting_id, area, area_reason, target_quality, chance, verdict, "
+        "overall, keep_de_titles, gaps_hit, comp_vs_baseline, model, assessed_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(posting_id) DO UPDATE SET "
+        "area=excluded.area, area_reason=excluded.area_reason, target_quality=excluded.target_quality, "
+        "chance=excluded.chance, verdict=excluded.verdict, overall=excluded.overall, "
+        "keep_de_titles=excluded.keep_de_titles, gaps_hit=excluded.gaps_hit, "
+        "comp_vs_baseline=excluded.comp_vs_baseline, model=excluded.model, assessed_at=excluded.assessed_at",
+        (
+            a.posting_id, a.area, a.area_reason, a.target_quality, a.chance, a.verdict,
+            a.overall, int(a.keep_de_titles), json.dumps(a.gaps_hit), a.comp_vs_baseline,
+            a.model, a.assessed_at,
+        ),
+    )
+    conn.commit()
+
+
 # -- read API (used by the web backend) ----------------------------------
 
 _POSTING_SELECT = """
 SELECT p.*,
-       a.area, a.target_quality, a.chance, a.verdict, a.overall,
-       a.gaps_hit, a.comp_vs_baseline, a.assessed_at,
+       a.area, a.area_reason, a.target_quality, a.chance, a.verdict, a.overall,
+       a.gaps_hit, a.comp_vs_baseline, a.keep_de_titles, a.model AS assessed_model,
+       a.assessed_at,
        s.state AS status_state, s.note AS status_note
 FROM postings p
 LEFT JOIN assessments a ON a.posting_id = p.id
@@ -394,14 +439,17 @@ def update_run_progress(conn: sqlite3.Connection, run_id: int, counts: dict, not
 
 
 def finish_run(conn: sqlite3.Connection, run_id: int, *, status: str, counts: dict, note: str | None = None) -> None:
-    conn.execute(
-        "UPDATE runs SET finished_at = ?, status = ?, n_fetched = ?, n_unique = ?, "
-        "n_new = ?, n_assessed = ?, note = ? WHERE id = ?",
-        (
-            now_iso(), status,
-            counts.get("fetched", 0), counts.get("unique", 0),
-            counts.get("new", 0), counts.get("assessed", 0),
-            note, run_id,
-        ),
-    )
+    """Mark a run finished. Only the count keys present in `counts` are overwritten;
+    the rest keep whatever `update_run_progress` last wrote."""
+    sets = ["finished_at = ?", "status = ?", "note = ?"]
+    params: list = [now_iso(), status, note]
+    for key, col in [
+        ("fetched", "n_fetched"), ("unique", "n_unique"),
+        ("new", "n_new"), ("assessed", "n_assessed"),
+    ]:
+        if key in counts:
+            sets.append(f"{col} = ?")
+            params.append(counts[key])
+    params.append(run_id)
+    conn.execute(f"UPDATE runs SET {', '.join(sets)} WHERE id = ?", params)
     conn.commit()

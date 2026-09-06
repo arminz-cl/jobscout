@@ -88,6 +88,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 22px; }
 .group-actions { margin-top: 10px; display: flex; gap: 8px; }
 
 .runbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.chk { display: flex; gap: 4px; align-items: center; color: var(--muted); font-size: 13px; }
+section.panel h2 { font-size: 13px; }
 select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
 
 .progress {

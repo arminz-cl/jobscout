@@ -8,9 +8,12 @@ from datetime import UTC
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "config.yaml"
+
+load_dotenv(REPO_ROOT / ".env")
 
 # LinkedIn f_TPR only reliably honors these three windows.
 WINDOW_24H = "r86400"
@@ -36,6 +39,25 @@ class QueryGroup:
 
 
 @dataclass(slots=True, frozen=True)
+class AssessorConfig:
+    provider: str                         # openai_compat | claude | ollama
+    model: str
+    base_url: str | None
+    temperature: float
+    api_key: str | None                   # resolved from .env, never from yaml
+
+    @property
+    def model_tag(self) -> str:
+        """Full identifier stored on each assessment and shown in the UI."""
+        if self.provider == "claude":
+            return self.model
+        host = "groq" if (self.base_url and "groq" in self.base_url) else self.provider
+        if self.provider == "ollama":
+            host = "ollama"
+        return f"{host}/{self.model}"
+
+
+@dataclass(slots=True, frozen=True)
 class Config:
     profile_dir: Path
     eval_dir: Path
@@ -50,6 +72,7 @@ class Config:
     time_posted: str                      # "auto" or a pinned window
     sort_by: str
     seniority: list[int]
+    assessor: AssessorConfig | None = None
     query_groups: dict[str, QueryGroup] = field(default_factory=dict)
     mode_groups: list[str] = field(default_factory=list)   # group names active in `mode`
     queries: list[str] = field(default_factory=list)       # flattened queries for `mode`
@@ -171,6 +194,8 @@ def load(path: Path | None = None) -> Config:
     if not queries:
         raise ConfigError(f"mode {raw.get('mode', 'casual')!r} resolved to zero queries")
 
+    assessor = _resolve_assessor(raw.get("assessor"))
+
     cfg = Config(
         profile_dir=profile_dir,
         eval_dir=eval_dir,
@@ -185,11 +210,44 @@ def load(path: Path | None = None) -> Config:
         time_posted=time_posted,
         sort_by=raw.get("sort_by", "DD"),
         seniority=list(raw.get("seniority", []) or []),
+        assessor=assessor,
         query_groups=query_groups,
         mode_groups=mode_groups,
         queries=queries,
     )
     return cfg
+
+
+_ASSESSOR_PROVIDERS = {"openai_compat", "claude", "ollama"}
+
+
+def _resolve_assessor(raw: dict | None) -> AssessorConfig | None:
+    if not raw:
+        return None
+    provider = raw.get("provider", "openai_compat")
+    if provider not in _ASSESSOR_PROVIDERS:
+        raise ConfigError(f"assessor.provider must be one of {sorted(_ASSESSOR_PROVIDERS)}")
+    if not raw.get("model"):
+        raise ConfigError("assessor.model is required")
+
+    base_url = raw.get("base_url")
+    if provider == "ollama" and not base_url:
+        base_url = "http://localhost:11434/v1"
+
+    # key comes from the environment only
+    key = None
+    if provider == "claude":
+        key = os.environ.get("ANTHROPIC_API_KEY")
+    elif provider == "openai_compat":
+        key = os.environ.get("ASSESSOR_API_KEY") or os.environ.get("GROQ_API_KEY")
+
+    return AssessorConfig(
+        provider=provider,
+        model=str(raw["model"]),
+        base_url=base_url,
+        temperature=float(raw.get("temperature", 0)),
+        api_key=key,
+    )
 
 
 def resolve_window(cfg: Config, since: str | None, last_run_iso: str | None) -> str:

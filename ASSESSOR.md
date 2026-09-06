@@ -53,21 +53,42 @@ every JD. **Not** re-read per posting.
 
 ---
 
-## The API call
+## The LLM call — pluggable provider
 
-- **Model:** `claude-sonnet-5` (from `config.yaml`). Sonnet 5 is strong at the nuanced
-  "SWE-on-data vs data-mover" judgment the rubric needs. Alternatives to validate against the
-  eval: `claude-opus-5` (better judgment, 2.5× the price), `claude-haiku-4-5` (⅕ the price,
-  worth trying for a rubric this structured).
-- **Structured output:** a forced tool call — `tool_choice: {type: "tool", name: "record_assessment"}`
-  with `strict: true` on the tool, so `tool_use.input` validates against the schema exactly.
-- **No `temperature`.** Sonnet 5 / Opus 5 reject sampling params (400). Determinism is therefore
-  *approximate* — same JD usually → same verdict, but not guaranteed. The rubric + rigid schema +
-  the eval harness are what keep it stable; the eval catches drift on any prompt change.
-- **Prompt caching:** `profile pack + rubric` is an identical prefix across every JD call in a
-  run. Mark it `cache_control: {type: "ephemeral"}` → ~90% cheaper on that prefix after the
-  first call. This is the single biggest cost lever for batch assessment.
-- **One JD per call.** Keeps each call debuggable, cheap, cache-friendly, and parallelizable.
+`assess.py` calls a thin `LLMClient` interface (`assess(system, user, schema) -> dict`) with three
+implementations, chosen by `config.yaml` → `assessor.provider`:
+
+| provider | for | model example | notes |
+|---|---|---|---|
+| **`openai_compat`** | **now — free** | `llama-3.3-70b-versatile` via Groq | Groq / Gemini / OpenRouter free tiers, OpenAI-style `/chat/completions`. Free key in `.env` as `ASSESSOR_API_KEY`. **Default while developing.** |
+| `claude` | the eventual target | `claude-sonnet-5` / `claude-haiku-4-5` | `anthropic` SDK, forced tool call + `strict: true`, prompt caching on the profile-pack prefix (~90% off). Paid (~$0.05–0.15/100). Anthropic doesn't train on API data. |
+| `ollama` | fully local | `qwen2.5:7b` | `http://localhost:11434`, no key, offline. Weaker (7–8B) — kept as an option, not the plan. |
+
+Decision: **start on Groq (`openai_compat`, Llama 3.3 70B).** Free, 70B ≈ good judgment on the
+rubric, no local setup. The profile pack (personal career data) does leave the machine — accepted.
+Flip to `claude` later; the eval will quantify what that buys.
+
+- **Structured output:** `response_format: {type: "json_object"}` + the schema spelled out in the
+  system prompt + Pydantic validation + one retry on a parse/validation failure. Works across all
+  three providers. (The `claude` path can additionally use a forced tool call for a hard guarantee.)
+- **Determinism:** approximate. `temperature: 0` where the provider accepts it (Groq/Ollama do;
+  Sonnet 5 / Opus 5 reject sampling params — 400). The rubric + rigid schema + the eval harness are
+  what keep verdicts stable; the eval catches drift on any prompt or model change.
+- **Prompt caching:** only meaningful on `claude` (identical `profile pack + rubric` prefix →
+  `cache_control: {type: "ephemeral"}`). The free providers re-send the prefix each call — fine
+  when it's free.
+- **One JD per call.** Debuggable, cheap, parallelizable.
+
+### `config.yaml`
+
+```yaml
+assessor:
+  provider: openai_compat
+  model: "llama-3.3-70b-versatile"
+  base_url: "https://api.groq.com/openai/v1"
+  temperature: 0
+# .env:  ASSESSOR_API_KEY=gsk_...      (Groq key; ANTHROPIC_API_KEY when provider: claude)
+```
 
 ### Output schema
 
@@ -122,16 +143,18 @@ button) uses a normal call.
 
 ## Storage
 
-Already in the schema:
-
 ```
 assessments(
-  posting_id, area, target_quality, chance, verdict, overall,
+  posting_id, area, area_reason, target_quality, chance, verdict, overall,
   keep_de_titles, gaps_hit(json), comp_vs_baseline, model, assessed_at
 )
 ```
 
-Add `area_reason` to that table alongside `overall`.
+- Add `area_reason` (migration).
+- **`model` is the full identifier** — `groq/llama-3.3-70b-versatile`, `claude-sonnet-5`,
+  `ollama/qwen2.5:7b`. Surfaced in the UI as a **tag/pill** on every assessed row (Assessments
+  table + posting drawer) so you can always see what produced a verdict and spot stale ones after
+  switching models.
 
 ---
 
@@ -153,22 +176,21 @@ This is the project's rigor story — an LLM app with a real, versioned eval.
 
 ---
 
-## Open questions (for you)
+## Decisions
 
-1. **Auto-assess after every fetch, or only on an explicit action?**
-   Leaning: opt-in per run (a checkbox next to "Run"), plus a standalone "Assess N pending" button —
-   mirrors the descriptions split. Assessing 600 postings on the first run is a real spend.
-2. **Model** — ship on `sonnet-5`, or eval `haiku-4-5` first and use it if it clears the bar?
-   The rubric is structured enough that Haiku might be fine at ⅕ the cost.
-3. **No description yet** — auto-fetch the JD before assessing, or skip and leave it for a backfill?
-4. **Batch vs sequential** for `assess_new` — Batch API (50% cost, async, minutes of latency) for
-   big backlogs, normal calls for small/interactive. Worth the two code paths?
-5. **Re-assess policy** — when the rubric or profile changes, re-assess everything automatically,
-   or only on demand (a "re-assess all" button)?
-6. **`intention-modes.md` mode** — the verdict rule shifts by mode. Read the mode from the private
-   repo at run time, or from jobscout's own `config.yaml` `mode:` field (which already exists)?
-7. **Profile-pack freshness** — rebuild it every run (always current), or cache to disk and only
-   rebuild when the source files change?
+- **Provider:** `openai_compat` → Groq, Llama 3.3 70B. Free. (settled)
+- **Model tag:** stored as the full id, shown as a pill in the UI. (settled)
+- **Trigger:** opt-in "+ assess" checkbox next to Run, **plus** a standalone "Assess N pending"
+  button — mirrors the cards/descriptions split. Never auto-assesses a big backlog silently.
+- **No description:** skip. `assess_pending` only touches postings that have a JD. (Fetch/backfill
+  the description first; the drawer's "assess" button fetches it inline if missing.)
+- **Batch:** sequential for now — Groq is free and fast, and the Batch API is Anthropic-only.
+- **Mode:** read from jobscout's own `config.yaml` `mode:` field (already there); the private
+  `intention-modes.md` is the source of truth the user mirrors into it.
+- **Re-assess:** on demand only — a "re-assess" button per posting, and a "re-assess all" action.
+  Never automatic on a prompt change (would silently churn cost/verdicts).
+- **Profile pack:** rebuilt every run from `profile_dir` (always current); cached in-process for
+  the duration of one run so it's read once, not per JD.
 
 ---
 

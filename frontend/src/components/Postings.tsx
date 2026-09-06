@@ -176,6 +176,7 @@ export function Postings({
               <th title="has assessment">✓</th>
               {mode === "assessed" && <th>Area</th>}
               {mode === "assessed" && <th>Verdict</th>}
+              {mode === "assessed" && <th>Model</th>}
               <th>Run</th>
             </tr>
           </thead>
@@ -237,6 +238,9 @@ export function Postings({
                 )}
                 {mode === "assessed" && (
                   <td>{p.verdict ? <span className={"pill " + p.verdict}>{p.verdict}</span> : "—"}</td>
+                )}
+                {mode === "assessed" && (
+                  <td className="muted" style={{ fontSize: 11 }}>{p.assessed_model ?? "—"}</td>
                 )}
                 <td className="muted">{p.first_run_id ? `#${p.first_run_id}` : "—"}</td>
               </tr>

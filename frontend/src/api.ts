@@ -44,11 +44,21 @@ export interface RunnerState {
   error: string | null;
 }
 
+export interface AssessorInfo {
+  configured: boolean;
+  provider: string | null;
+  model: string | null;
+  model_tag: string | null;
+  has_key: boolean;
+  pending: number;
+}
+
 export interface Facets {
   total: number;
   with_description: number;
   without_description: number;
   assessed: number;
+  pending_assessment: number;
   unseen: number;
   starred: number;
   by_group: {
@@ -111,12 +121,15 @@ export interface Posting {
   first_seen_at: string;
   last_seen_at: string;
   area: string | null;
+  area_reason: string | null;
   target_quality: string | null;
   chance: string | null;
   verdict: string | null;
   overall: string | null;
   gaps_hit: string[] | string | null;
   comp_vs_baseline: string | null;
+  keep_de_titles: number | null;
+  assessed_model: string | null;
   assessed_at: string | null;
   status_state: string | null;
   status_note: string | null;
@@ -150,9 +163,11 @@ export const api = {
   startRun: (body: {
     groups?: string[] | null;
     since?: string | null;
-    phase?: "cards" | "descriptions" | "full";
+    phase?: "cards" | "descriptions" | "full" | "assess";
+    then_assess?: boolean;
   }) => j<{ run_id: number }>("/runs", { method: "POST", body: JSON.stringify(body) }),
   stopRun: (id: number) => j<{ ok: boolean }>(`/runs/${id}/stop`, { method: "POST" }),
+  assessor: () => j<AssessorInfo>("/assessor"),
   postings: (params: Record<string, string | number | boolean | undefined>) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params))
