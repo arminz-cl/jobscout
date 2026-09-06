@@ -140,7 +140,7 @@ export function Dashboard() {
             </ul>
             <div className="group-actions">
               <button disabled={busy} onClick={() => start([g.name])}>
-                Run {g.name}
+                Run
               </button>
             </div>
           </div>
