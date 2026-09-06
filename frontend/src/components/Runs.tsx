@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, Run, windowLabel } from "../api";
+import { api, groupsLabel, Run, windowLabel } from "../api";
 
 const statusColor = (s: string | null) =>
   s === "ok"
@@ -91,7 +91,7 @@ export function Runs({ onOpenRun }: { onOpenRun: (id: number) => void }) {
               </td>
               <td className="muted">{r.kind ?? "fetch"}</td>
               <td>
-                <span className="pill">{r.groups || r.mode || "—"}</span>
+                <span className="pill">{groupsLabel(r.groups) }</span>
               </td>
               <td className="muted">{windowLabel(r.time_posted_used)}</td>
               <td className="muted">{new Date(r.started_at).toLocaleString()}</td>

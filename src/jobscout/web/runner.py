@@ -58,20 +58,24 @@ def start_fetch(groups: list[str] | None, since: str | None, *, assess: bool = F
             raise RuntimeError(f"a {_current.kind} run (#{_current.run_id}) is already in progress")
 
         cfg = load()
+        # None means "the active-mode groups" — record them concretely on the run
+        effective_groups = groups if groups is not None else list(cfg.mode_groups)
         conn = db.connect(cfg.db_path)
         last_run = db.last_successful_run_iso(conn, cfg.source)
         window = resolve_window(cfg, since, last_run)
-        run_id = db.start_run(conn, cfg.source, cfg.mode, window, groups=groups, kind="fetch")
+        run_id = db.start_run(
+            conn, cfg.source, cfg.mode, window, groups=effective_groups, kind="fetch"
+        )
         conn.close()
 
         cancel = threading.Event()
         thread = threading.Thread(
             target=_run_fetch_job,
-            args=(cfg, run_id, groups, since, assess, cancel),
+            args=(cfg, run_id, effective_groups, since, assess, cancel),
             name=f"jobscout-fetch-{run_id}",
             daemon=True,
         )
-        _current = JobState(run_id, "fetch", groups, thread, cancel)
+        _current = JobState(run_id, "fetch", effective_groups, thread, cancel)
         thread.start()
         return run_id
 

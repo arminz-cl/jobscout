@@ -41,8 +41,9 @@ def run_fetch(
     last_run = db.last_successful_run_iso(conn, cfg.source)
     window = resolve_window(cfg, since, last_run)
     queries = cfg.queries_for(groups)
+    effective_groups = groups if groups is not None else list(cfg.mode_groups)
     if run_id is None:
-        run_id = db.start_run(conn, cfg.source, cfg.mode, window)
+        run_id = db.start_run(conn, cfg.source, cfg.mode, window, groups=effective_groups)
 
     stopped = cancel.is_set() if cancel else False
 

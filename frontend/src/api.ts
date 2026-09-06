@@ -63,6 +63,17 @@ export const AREA_NAMES: Record<string, string> = {
   D: "Data Engineer",
 };
 
+// query-group name -> short label for run/filter chips
+const GROUP_LABELS: Record<string, string> = {
+  area_a: "A · SWE-data",
+  area_b: "B · AI Eng",
+  area_c_customer: "C · customer SWE",
+  broad: "broad",
+};
+export const groupLabel = (name: string) => GROUP_LABELS[name] ?? name;
+export const groupsLabel = (csv: string | null | undefined) =>
+  csv ? csv.split(",").map(groupLabel).join(" + ") : "—";
+
 export interface Posting {
   id: number;
   external_id: string;

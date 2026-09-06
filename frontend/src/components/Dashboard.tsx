@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, QueryGroup, Run, RunnerState, windowLabel } from "../api";
+import { api, groupsLabel, QueryGroup, Run, RunnerState, windowLabel } from "../api";
 
 const SINCE_OPTIONS = [
   { value: "", label: "auto (from last run)" },
@@ -123,7 +123,7 @@ function RunRow({ run }: { run: Run }) {
     <div style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
       <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
         <b>#{run.id}</b>
-        <span className="pill">{run.groups || run.mode}</span>
+        <span className="pill">{groupsLabel(run.groups)}</span>
         <span className="muted">{windowLabel(run.time_posted_used)}</span>
         <span
           className="pill"
