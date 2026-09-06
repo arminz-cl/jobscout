@@ -94,7 +94,7 @@ def query_groups():
 class StartRun(BaseModel):
     groups: list[str] | None = None       # None -> the active-mode groups
     since: str | None = None              # "24h" | "7d" | "30d" | None (auto)
-    assess: bool = False
+    phase: str = "full"                   # "cards" | "descriptions" | "full"
 
 
 @app.get("/api/runs")
@@ -130,7 +130,7 @@ def runner_state():
 @app.post("/api/runs")
 def start_run(body: StartRun):
     try:
-        run_id = runner.start_fetch(body.groups, body.since, assess=body.assess)
+        run_id = runner.start_fetch(body.groups, body.since, phase=body.phase)
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from e
     except ConfigError as e:
@@ -257,6 +257,46 @@ def seen(posting_id: int):
     if not db.get_posting(conn, posting_id):
         raise HTTPException(404, "no such posting")
     db.mark_seen(conn, posting_id)
+    return {"ok": True}
+
+
+@app.post("/api/postings/{posting_id}/description")
+def fetch_description(posting_id: int):
+    """Backfill (or refresh) this one posting's JD — one network request."""
+    from ..fetch import fetch_one_description
+
+    cfg = load()
+    conn = db.connect(cfg.db_path)
+    if not db.get_posting(conn, posting_id):
+        raise HTTPException(404, "no such posting")
+    try:
+        fetch_one_description(conn, cfg, posting_id)
+    except Exception as e:
+        raise HTTPException(502, f"fetch failed: {e}") from e
+    return _row(db.get_posting(conn, posting_id))
+
+
+# -- companies ------------------------------------------------------------
+
+
+@app.get("/api/companies")
+def companies():
+    conn = _conn()
+    return db.list_companies(conn)
+
+
+class SetRating(BaseModel):
+    name: str
+    rating: int
+    note: str | None = None
+
+
+@app.post("/api/companies/rating")
+def set_company_rating(body: SetRating):
+    if not 0 <= body.rating <= 5:
+        raise HTTPException(400, "rating must be 0-5")
+    conn = _conn()
+    db.set_company_rating(conn, body.name, body.rating, body.note)
     return {"ok": True}
 
 

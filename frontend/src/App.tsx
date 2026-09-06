@@ -3,21 +3,29 @@ import { api, AppConfig, windowLabel } from "./api";
 import { Dashboard } from "./components/Dashboard";
 import { Postings } from "./components/Postings";
 import { Runs } from "./components/Runs";
+import { Companies } from "./components/Companies";
 
-type Tab = "dashboard" | "runs" | "postings" | "assessments";
+type Tab = "dashboard" | "runs" | "companies" | "postings" | "assessments";
 
 export function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [runFilter, setRunFilter] = useState<number | null>(null);
+  const [companyFilter, setCompanyFilter] = useState<string | null>(null);
 
   useEffect(() => {
     api.config().then(setCfg).catch((e) => setErr(String(e.message)));
   }, []);
 
   const openRun = (id: number) => {
+    setCompanyFilter(null);
     setRunFilter(id);
+    setTab("postings");
+  };
+  const openCompany = (name: string) => {
+    setRunFilter(null);
+    setCompanyFilter(name);
     setTab("postings");
   };
 
@@ -33,13 +41,16 @@ export function App() {
           </span>
         )}
         <nav className="tabs">
-          {(["dashboard", "runs", "postings", "assessments"] as Tab[]).map((t) => (
+          {(["dashboard", "runs", "companies", "postings", "assessments"] as Tab[]).map((t) => (
             <button
               key={t}
               className={tab === t ? "active" : ""}
               onClick={() => {
                 setTab(t);
-                if (t !== "postings") setRunFilter(null);
+                if (t !== "postings") {
+                  setRunFilter(null);
+                  setCompanyFilter(null);
+                }
               }}
             >
               {t[0].toUpperCase() + t.slice(1)}
@@ -51,8 +62,14 @@ export function App() {
         {err && <div className="error">{err}</div>}
         {tab === "dashboard" && <Dashboard />}
         {tab === "runs" && <Runs onOpenRun={openRun} />}
+        {tab === "companies" && <Companies onOpenCompany={openCompany} />}
         {tab === "postings" && (
-          <Postings mode="all" runId={runFilter} onClearRun={() => setRunFilter(null)} />
+          <Postings
+            mode="all"
+            runId={runFilter}
+            initialCompany={companyFilter}
+            onClearRun={() => setRunFilter(null)}
+          />
         )}
         {tab === "assessments" && <Postings mode="assessed" />}
       </main>

@@ -53,6 +53,19 @@ export function PostingDrawer({
     }
   };
 
+  const getDescription = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      setP(await api.fetchDescription(id));
+      onChanged();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const gaps = Array.isArray(p?.gaps_hit) ? p?.gaps_hit : undefined;
 
   return (
@@ -159,7 +172,16 @@ export function PostingDrawer({
               </button>
             </div>
 
-            <div className="jd">{p.description || "(no description fetched)"}</div>
+            <div className="jd">
+              {p.description || "(no description fetched yet)"}
+              {!p.description && (
+                <div style={{ marginTop: 10 }}>
+                  <button onClick={getDescription} disabled={busy}>
+                    {busy ? "fetching…" : "fetch description"}
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         )}
       </aside>

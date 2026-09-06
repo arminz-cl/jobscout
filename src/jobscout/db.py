@@ -55,6 +55,13 @@ CREATE TABLE IF NOT EXISTS status (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS companies (
+    name       TEXT PRIMARY KEY,
+    rating     INTEGER NOT NULL DEFAULT 0,   -- 0-5, manual for now
+    note       TEXT,
+    updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     id               INTEGER PRIMARY KEY,
     source           TEXT NOT NULL,
@@ -282,13 +289,36 @@ def get_run(conn: sqlite3.Connection, run_id: int) -> sqlite3.Row | None:
 
 
 def list_companies(conn: sqlite3.Connection) -> list[dict]:
-    return [
-        {"name": r["company"], "count": r["n"]}
-        for r in conn.execute(
-            "SELECT company, COUNT(*) AS n FROM postings WHERE company != '' "
-            "GROUP BY company ORDER BY n DESC, company COLLATE NOCASE"
-        )
-    ]
+    """Every company seen in postings, with its (manual) rating and posting stats."""
+    rows = conn.execute(
+        """
+        SELECT p.company AS name,
+               COUNT(*) AS count,
+               SUM(CASE WHEN a.verdict = 'pursue' THEN 1 ELSE 0 END) AS pursue,
+               SUM(CASE WHEN p.starred = 1 THEN 1 ELSE 0 END) AS starred,
+               COALESCE(c.rating, 0) AS rating,
+               c.note AS note
+        FROM postings p
+        LEFT JOIN assessments a ON a.posting_id = p.id
+        LEFT JOIN companies c ON c.name = p.company
+        WHERE p.company != ''
+        GROUP BY p.company
+        ORDER BY COALESCE(c.rating, 0) DESC, count DESC, name COLLATE NOCASE
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_company_rating(
+    conn: sqlite3.Connection, name: str, rating: int, note: str | None = None
+) -> None:
+    conn.execute(
+        "INSERT INTO companies (name, rating, note, updated_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(name) DO UPDATE SET rating = excluded.rating, "
+        "note = COALESCE(excluded.note, companies.note), updated_at = excluded.updated_at",
+        (name, rating, note, now_iso()),
+    )
+    conn.commit()
 
 
 def set_status(conn: sqlite3.Connection, posting_id: int, state: str, note: str | None) -> None:
@@ -305,9 +335,14 @@ def set_status(conn: sqlite3.Connection, posting_id: int, state: str, note: str 
 
 
 def last_successful_run_iso(conn: sqlite3.Connection, source: str) -> str | None:
+    """Most recent run that actually ran the searches (kind 'fetch' or legacy NULL).
+
+    Backfill-only runs are excluded — they don't advance the search window.
+    """
     row = conn.execute(
         "SELECT finished_at FROM runs WHERE source = ? AND status IN ('ok', 'partial') "
-        "AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1",
+        "AND (kind = 'fetch' OR kind IS NULL) AND finished_at IS NOT NULL "
+        "ORDER BY finished_at DESC LIMIT 1",
         (source,),
     ).fetchone()
     return row["finished_at"] if row else None

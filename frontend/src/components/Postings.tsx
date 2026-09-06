@@ -9,10 +9,12 @@ const triParam = (t: Tri): boolean | undefined => (t === "any" ? undefined : t =
 export function Postings({
   mode,
   runId,
+  initialCompany,
   onClearRun,
 }: {
   mode: "all" | "assessed";
   runId?: number | null;
+  initialCompany?: string | null;
   onClearRun?: () => void;
 }) {
   const [rows, setRows] = useState<Posting[]>([]);
@@ -21,7 +23,7 @@ export function Postings({
   const [search, setSearch] = useState("");
   const [verdict, setVerdict] = useState("");
   const [group, setGroup] = useState("");
-  const [company, setCompany] = useState("");
+  const [company, setCompany] = useState(initialCompany ?? "");
   const [unseenOnly, setUnseenOnly] = useState(false);
   const [starredOnly, setStarredOnly] = useState(false);
   const [hasDesc, setHasDesc] = useState<Tri>("any");
@@ -59,6 +61,10 @@ export function Postings({
       setLoading(false);
     }
   }, [search, verdict, group, company, runId, unseenOnly, starredOnly, hasDesc, order, mode]);
+
+  useEffect(() => {
+    if (initialCompany != null) setCompany(initialCompany);
+  }, [initialCompany]);
 
   useEffect(() => {
     const t = setTimeout(load, 180);

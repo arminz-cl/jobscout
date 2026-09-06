@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, groupsLabel, QueryGroup, Run, RunnerState, windowLabel } from "../api";
+import { api, Facets, groupsLabel, QueryGroup, Run, RunnerState, windowLabel } from "../api";
 
 const SINCE_OPTIONS = [
   { value: "", label: "auto (from last run)" },
@@ -12,16 +12,24 @@ export function Dashboard() {
   const [groups, setGroups] = useState<QueryGroup[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [runner, setRunner] = useState<RunnerState | null>(null);
+  const [facets, setFacets] = useState<Facets | null>(null);
   const [since, setSince] = useState("");
+  const [withDesc, setWithDesc] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const timer = useRef<number>();
 
   const refresh = useCallback(async () => {
     try {
-      const [g, r, rn] = await Promise.all([api.queryGroups(), api.runs(12), api.runner()]);
+      const [g, r, rn, f] = await Promise.all([
+        api.queryGroups(),
+        api.runs(12),
+        api.runner(),
+        api.facets(),
+      ]);
       setGroups(g);
       setRuns(r);
       setRunner(rn);
+      setFacets(f);
       setErr(null);
     } catch (e: any) {
       setErr(e.message);
@@ -42,7 +50,20 @@ export function Dashboard() {
 
   const start = async (groupNames: string[] | null) => {
     try {
-      await api.startRun({ groups: groupNames, since: since || null });
+      await api.startRun({
+        groups: groupNames,
+        since: since || null,
+        phase: withDesc ? "full" : "cards",
+      });
+      await refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  };
+
+  const backfill = async () => {
+    try {
+      await api.startRun({ phase: "descriptions" });
       await refresh();
     } catch (e: any) {
       setErr(e.message);
@@ -51,6 +72,7 @@ export function Dashboard() {
 
   const busy = runner?.busy ?? false;
   const activeGroups = groups.filter((g) => g.active).map((g) => g.name);
+  const missingDesc = facets ? facets.without_description : 0;
 
   return (
     <div className="grid cols-2">
@@ -63,9 +85,25 @@ export function Dashboard() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+          <label className="muted" style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={withDesc}
+              onChange={(e) => setWithDesc(e.target.checked)}
+            />
+            + descriptions
+          </label>
           <button className="primary" disabled={busy} onClick={() => start(null)}>
             Run all active ({activeGroups.join(" + ")})
           </button>
+        </div>
+        <div className="runbar">
+          <button disabled={busy || missingDesc === 0} onClick={backfill}>
+            Backfill descriptions ({missingDesc} missing)
+          </button>
+          <span className="muted" style={{ fontSize: 12 }}>
+            core attributes are cheap & dedup-safe; descriptions are one request per posting
+          </span>
         </div>
         {err && <div className="error">{err}</div>}
 

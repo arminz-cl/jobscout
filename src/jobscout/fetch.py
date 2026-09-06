@@ -33,24 +33,30 @@ def run_fetch(
     groups: list[str] | None = None,
     since: str | None = None,
     skip_descriptions: bool = False,
+    do_cards: bool = True,
     verbose: bool = True,
     run_id: int | None = None,
     cancel: threading.Event | None = None,
 ) -> FetchResult:
+    """Run a fetch. `do_cards=False` skips the searches and only backfills
+    descriptions for postings already in the DB that lack one."""
     source = get_source(cfg.source)
     last_run = db.last_successful_run_iso(conn, cfg.source)
     window = resolve_window(cfg, since, last_run)
-    queries = cfg.queries_for(groups)
+    queries = cfg.queries_for(groups) if do_cards else []
     effective_groups = groups if groups is not None else list(cfg.mode_groups)
     if run_id is None:
-        run_id = db.start_run(conn, cfg.source, cfg.mode, window, groups=effective_groups)
+        kind = "fetch" if do_cards else "backfill"
+        run_id = db.start_run(
+            conn, cfg.source, cfg.mode, window, groups=effective_groups, kind=kind
+        )
 
     stopped = cancel.is_set() if cancel else False
 
     if verbose:
         label = ",".join(groups) if groups else cfg.mode
         print(f"source={cfg.source}  groups={label}  window={window}  "
-              f"queries={len(queries)}  locations={len(cfg.locations)}")
+              f"queries={len(queries)}  locations={len(cfg.locations)}  cards={do_cards}")
 
     fetched = 0
     seen_ext: set[str] = set()
@@ -147,3 +153,19 @@ def _sniff_comp(text: str) -> str | None:
 
     m = re.search(r"(\$[\d,]{4,}(?:\s*[-–—to]+\s*\$?[\d,]{4,})?(?:\s*(?:per year|/yr|annually|CAD|USD))?)", text)
     return m.group(1).strip() if m else None
+
+
+def fetch_one_description(conn: sqlite3.Connection, cfg: Config, posting_id: int) -> str:
+    """Fetch (or re-fetch) the description for a single posting. Used by the
+    per-posting backfill button. One network request."""
+    row = db.get_posting(conn, posting_id)
+    if not row:
+        raise ValueError(f"no posting {posting_id}")
+    source = get_source(cfg.source)
+    p = Posting(source=row["source"], external_id=row["external_id"], url=row["url"],
+                title=row["title"], company=row["company"], location=row["location"])
+    text = source.fetch_description(p, cfg)
+    db.set_description(conn, posting_id, text, _sniff_comp(text))
+    if hasattr(source, "close"):
+        source.close()
+    return text

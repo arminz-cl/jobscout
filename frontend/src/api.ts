@@ -74,6 +74,15 @@ export const groupLabel = (name: string) => GROUP_LABELS[name] ?? name;
 export const groupsLabel = (csv: string | null | undefined) =>
   csv ? csv.split(",").map(groupLabel).join(" + ") : "—";
 
+export interface Company {
+  name: string;
+  count: number;
+  pursue: number;
+  starred: number;
+  rating: number;
+  note: string | null;
+}
+
 export interface Posting {
   id: number;
   external_id: string;
@@ -129,8 +138,11 @@ export const api = {
   runs: (limit = 20) => j<Run[]>(`/runs?limit=${limit}`),
   run: (id: number) => j<Run>(`/runs/${id}`),
   runner: () => j<RunnerState>("/runner"),
-  startRun: (body: { groups?: string[] | null; since?: string | null; assess?: boolean }) =>
-    j<{ run_id: number }>("/runs", { method: "POST", body: JSON.stringify(body) }),
+  startRun: (body: {
+    groups?: string[] | null;
+    since?: string | null;
+    phase?: "cards" | "descriptions" | "full";
+  }) => j<{ run_id: number }>("/runs", { method: "POST", body: JSON.stringify(body) }),
   stopRun: (id: number) => j<{ ok: boolean }>(`/runs/${id}/stop`, { method: "POST" }),
   postings: (params: Record<string, string | number | boolean | undefined>) => {
     const qs = new URLSearchParams();
@@ -139,6 +151,12 @@ export const api = {
     return j<{ count: number; results: Posting[] }>(`/postings?${qs}`);
   },
   facets: () => j<Facets>("/postings/facets"),
+  companies: () => j<Company[]>("/companies"),
+  setCompanyRating: (name: string, rating: number) =>
+    j<{ ok: boolean }>("/companies/rating", {
+      method: "POST",
+      body: JSON.stringify({ name, rating }),
+    }),
   posting: (id: number) => j<Posting>(`/postings/${id}`),
   setStatus: (id: number, state: string, note?: string) =>
     j<{ ok: boolean }>(`/postings/${id}/status`, {
@@ -150,5 +168,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ starred }),
     }),
+  fetchDescription: (id: number) =>
+    j<Posting>(`/postings/${id}/description`, { method: "POST" }),
   assess: (id: number) => j<Posting>(`/postings/${id}/assess`, { method: "POST" }),
 };
