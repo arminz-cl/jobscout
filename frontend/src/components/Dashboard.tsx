@@ -28,6 +28,7 @@ export function Dashboard() {
   const [since, setSince] = useState("");
   const [withDesc, setWithDesc] = useState(true);
   const [withAssess, setWithAssess] = useState(false);
+  const [assessLimit, setAssessLimit] = useState<number | "">(20);
   const [err, setErr] = useState<string | null>(null);
   const timer = useRef<number>();
 
@@ -72,6 +73,8 @@ export function Dashboard() {
     }
   };
 
+  const limitOrNull = assessLimit === "" ? null : Number(assessLimit);
+
   const startFetch = (groupNames: string[] | null) =>
     call(() =>
       api.startRun({
@@ -79,6 +82,7 @@ export function Dashboard() {
         since: since || null,
         phase: withDesc ? "full" : "cards",
         then_assess: withAssess,
+        assess_limit: withAssess ? limitOrNull : null,
       }),
     );
 
@@ -167,15 +171,30 @@ export function Dashboard() {
                   no API key — set ASSESSOR_API_KEY in .env
                 </span>
               )}
+              <label className="chk">
+                how many
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="all"
+                  value={assessLimit}
+                  onChange={(e) =>
+                    setAssessLimit(e.target.value === "" ? "" : Math.max(1, +e.target.value))
+                  }
+                  style={{ width: 64, padding: "4px 6px", font: "inherit" }}
+                />
+              </label>
               <button
                 className="primary"
                 disabled={busy || pending === 0 || !assessor.has_key}
-                onClick={() => call(() => api.startRun({ phase: "assess" }))}
+                onClick={() =>
+                  call(() => api.startRun({ phase: "assess", assess_limit: limitOrNull }))
+                }
               >
-                Assess {pending} pending
+                Assess {limitOrNull === null ? `all ${pending}` : Math.min(limitOrNull, pending)}
               </button>
               <span className="muted" style={{ fontSize: 12 }}>
-                {facets?.assessed ?? 0} assessed · one LLM call per posting
+                {facets?.assessed ?? 0} assessed · {pending} pending · one LLM call each
               </span>
             </div>
             <div className="grid cols-2">

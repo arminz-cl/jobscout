@@ -60,6 +60,7 @@ def start_fetch(
     *,
     phase: str = "full",
     then_assess: bool = False,
+    assess_limit: int | None = None,
 ) -> int:
     """phase: 'cards' (searches only), 'descriptions' (backfill only), 'full' (both),
     'assess' (score pending postings, no fetch). `then_assess` chains assessment
@@ -85,7 +86,7 @@ def start_fetch(
         cancel = threading.Event()
         thread = threading.Thread(
             target=_run_job,
-            args=(cfg, run_id, effective_groups, since, phase, then_assess, cancel),
+            args=(cfg, run_id, effective_groups, since, phase, then_assess, assess_limit, cancel),
             name=f"jobscout-{phase}-{run_id}",
             daemon=True,
         )
@@ -101,12 +102,13 @@ def _run_job(
     since: str | None,
     phase: str,
     then_assess: bool,
+    assess_limit: int | None,
     cancel: threading.Event,
 ) -> None:
     conn = db.connect(cfg.db_path)
     try:
         if phase == "assess":
-            _assess(conn, cfg, run_id, cancel, scope_run_id=None)
+            _assess(conn, cfg, run_id, cancel, scope_run_id=None, limit=assess_limit)
         else:
             result = run_fetch(
                 conn, cfg, groups=groups, since=since, verbose=True, run_id=run_id, cancel=cancel,
@@ -114,7 +116,10 @@ def _run_job(
                 skip_descriptions=phase == "cards",
             )
             if then_assess and not (cancel and cancel.is_set()):
-                _assess(conn, cfg, run_id, cancel, scope_run_id=result.run_id)
+                _assess(
+                    conn, cfg, run_id, cancel,
+                    scope_run_id=result.run_id, limit=assess_limit,
+                )
     except Exception as e:  # noqa: BLE001 - surface any failure to the UI
         traceback.print_exc()
         db.finish_run(conn, run_id, status="failed", counts={}, note=f"{type(e).__name__}: {e}")
@@ -125,19 +130,16 @@ def _run_job(
         conn.close()
 
 
-def _assess(conn, cfg, run_id, cancel, *, scope_run_id) -> None:
+def _assess(conn, cfg, run_id, cancel, *, scope_run_id, limit=None) -> None:
     from ..assess import assess_pending
 
-    total_holder = {}
-
     def progress(done, failed, total):
-        total_holder["t"] = total
         db.update_run_progress(
             conn, run_id, {"assessed": done}, note=f"assessing {done}/{total} ({failed} failed)"
         )
 
     res = assess_pending(
-        conn, cfg, run_id=scope_run_id, progress=progress, cancel=cancel
+        conn, cfg, run_id=scope_run_id, limit=limit, progress=progress, cancel=cancel
     )
     status = "stopped" if (cancel and cancel.is_set()) else "ok"
     db.finish_run(

@@ -98,6 +98,7 @@ class StartRun(BaseModel):
     since: str | None = None              # "24h" | "7d" | "30d" | None (auto)
     phase: str = "full"                   # "cards" | "descriptions" | "full" | "assess"
     then_assess: bool = False             # chain assessment after a cards/full run
+    assess_limit: int | None = None       # cap how many postings to score this run
 
 
 @app.get("/api/runs")
@@ -134,7 +135,8 @@ def runner_state():
 def start_run(body: StartRun):
     try:
         run_id = runner.start_fetch(
-            body.groups, body.since, phase=body.phase, then_assess=body.then_assess
+            body.groups, body.since, phase=body.phase,
+            then_assess=body.then_assess, assess_limit=body.assess_limit,
         )
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from e

@@ -165,6 +165,7 @@ export const api = {
     since?: string | null;
     phase?: "cards" | "descriptions" | "full" | "assess";
     then_assess?: boolean;
+    assess_limit?: number | null;
   }) => j<{ run_id: number }>("/runs", { method: "POST", body: JSON.stringify(body) }),
   stopRun: (id: number) => j<{ ok: boolean }>(`/runs/${id}/stop`, { method: "POST" }),
   assessor: () => j<AssessorInfo>("/assessor"),
