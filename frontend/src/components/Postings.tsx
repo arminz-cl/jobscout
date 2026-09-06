@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, AREA_NAMES, Facets, Posting } from "../api";
+import { api, AREA_NAMES, Facets, groupLabel, Posting, seedGroupTitles } from "../api";
 import { PostingDrawer } from "./PostingDrawer";
 
 type Tri = "any" | "yes" | "no";
@@ -54,6 +54,7 @@ export function Postings({
       setRows(res.results);
       setCount(res.count);
       setFacets(f);
+      seedGroupTitles(f.by_group);
       setErr(null);
     } catch (e: any) {
       setErr(e.message);
@@ -90,7 +91,7 @@ export function Postings({
           <option value="">all intent groups</option>
           {facets?.by_group.map((g) => (
             <option key={g.name} value={g.name}>
-              {g.name} ({g.count}){g.active ? " ·active" : ""}
+              {g.title} ({g.count}){g.active ? " ·active" : ""}
             </option>
           ))}
         </select>
@@ -167,13 +168,15 @@ export function Postings({
             <tr>
               <th style={{ width: 22 }}></th>
               <th>Role</th>
+              <th>Intent</th>
               <th>Location</th>
               <th>Work</th>
               <th>Posted</th>
+              <th title="has description">JD</th>
+              <th title="has assessment">✓</th>
               {mode === "assessed" && <th>Area</th>}
               {mode === "assessed" && <th>Verdict</th>}
               <th>Run</th>
-              <th>Intent</th>
             </tr>
           </thead>
           <tbody>
@@ -194,9 +197,33 @@ export function Postings({
                   <br />
                   <span className="company">{p.company}</span>
                 </td>
+                <td>
+                  {p.matched_group ? (
+                    <span
+                      className="pill area"
+                      title={`${groupLabel(p.matched_group)}\n\nmatched query:\n${p.matched_query ?? ""}`}
+                    >
+                      {groupLabel(p.matched_group)}
+                    </span>
+                  ) : (
+                    <span
+                      className="muted"
+                      title={p.matched_query ?? ""}
+                      style={{ fontSize: 11 }}
+                    >
+                      (pre-groups)
+                    </span>
+                  )}
+                </td>
                 <td>{p.location}</td>
                 <td className="muted">{p.workplace_type ?? "—"}</td>
                 <td className="muted">{p.posted_at ?? "—"}</td>
+                <td style={{ textAlign: "center" }} title={p.description ? "has JD" : "no JD"}>
+                  {p.description ? "✓" : ""}
+                </td>
+                <td style={{ textAlign: "center" }} title={p.verdict ? "assessed" : "not assessed"}>
+                  {p.verdict || p.assessed_at ? "✓" : ""}
+                </td>
                 {mode === "assessed" && (
                   <td>
                     {p.area ? (
@@ -212,9 +239,6 @@ export function Postings({
                   <td>{p.verdict ? <span className={"pill " + p.verdict}>{p.verdict}</span> : "—"}</td>
                 )}
                 <td className="muted">{p.first_run_id ? `#${p.first_run_id}` : "—"}</td>
-                <td className="muted" style={{ fontSize: 11, maxWidth: 200 }}>
-                  {p.matched_query}
-                </td>
               </tr>
             ))}
           </tbody>

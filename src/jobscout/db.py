@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS postings (
     comp_raw      TEXT,
     posted_at     TEXT,
     matched_query TEXT,
+    matched_group TEXT,
     first_seen_at TEXT NOT NULL,
     last_seen_at  TEXT NOT NULL,
     first_run_id  INTEGER,                -- the run that first inserted this posting
@@ -88,6 +89,7 @@ _MIGRATIONS = [
     "ALTER TABLE postings ADD COLUMN starred INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE postings ADD COLUMN first_run_id INTEGER",
     "ALTER TABLE postings ADD COLUMN workplace_type TEXT",
+    "ALTER TABLE postings ADD COLUMN matched_group TEXT",
 ]
 
 
@@ -127,12 +129,13 @@ def upsert_posting(
         return row["id"], False
     cur = conn.execute(
         "INSERT INTO postings (source, external_id, url, title, company, location, remote, "
-        "workplace_type, description, comp_raw, posted_at, matched_query, first_seen_at, "
-        "last_seen_at, first_run_id, raw_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "workplace_type, description, comp_raw, posted_at, matched_query, matched_group, "
+        "first_seen_at, last_seen_at, first_run_id, raw_json) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             p.source, p.external_id, p.url, p.title, p.company, p.location,
             None if p.remote is None else int(p.remote), p.workplace_type,
-            p.description, p.comp_raw, p.posted_at, p.matched_query,
+            p.description, p.comp_raw, p.posted_at, p.matched_query, p.matched_group,
             now, now, run_id, json.dumps(p.raw or {}),
         ),
     )
@@ -169,6 +172,7 @@ def list_postings(
     conn: sqlite3.Connection,
     *,
     query: str | None = None,
+    group: str | None = None,
     queries: list[str] | None = None,
     run_id: int | None = None,
     company: str | None = None,
@@ -187,7 +191,16 @@ def list_postings(
     if query:
         where.append("p.matched_query = ?")
         params.append(query)
-    if queries:
+    if group and queries:
+        # match the denormalized group column (new rows) OR the query set (old rows)
+        where.append(
+            f"(p.matched_group = ? OR p.matched_query IN ({','.join('?' * len(queries))}))"
+        )
+        params += [group, *queries]
+    elif group:
+        where.append("p.matched_group = ?")
+        params.append(group)
+    elif queries:
         where.append(f"p.matched_query IN ({','.join('?' * len(queries))})")
         params += queries
     if run_id is not None:

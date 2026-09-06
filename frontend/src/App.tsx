@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, AppConfig, windowLabel } from "./api";
+import { api, AppConfig, seedGroupTitles, windowLabel } from "./api";
 import { Dashboard } from "./components/Dashboard";
 import { Postings } from "./components/Postings";
 import { Runs } from "./components/Runs";
@@ -16,6 +16,7 @@ export function App() {
 
   useEffect(() => {
     api.config().then(setCfg).catch((e) => setErr(String(e.message)));
+    api.queryGroups().then(seedGroupTitles).catch(() => {});
   }, []);
 
   const openRun = (id: number) => {

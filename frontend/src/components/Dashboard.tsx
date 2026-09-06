@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, Facets, groupsLabel, QueryGroup, Run, RunnerState, windowLabel } from "../api";
+import {
+  api,
+  Facets,
+  groupsLabel,
+  QueryGroup,
+  Run,
+  RunnerState,
+  seedGroupTitles,
+  windowLabel,
+} from "../api";
 
 const SINCE_OPTIONS = [
   { value: "", label: "auto (from last run)" },
@@ -26,6 +35,7 @@ export function Dashboard() {
         api.runner(),
         api.facets(),
       ]);
+      seedGroupTitles(g);
       setGroups(g);
       setRuns(r);
       setRunner(rn);
@@ -110,7 +120,7 @@ export function Dashboard() {
         {groups.map((g) => (
           <div className="group" key={g.name}>
             <div className="group-head">
-              <span className="name">{g.name}</span>
+              <span className="name">{g.title}</span>
               <span className={"badge" + (g.active ? " active" : "")}>
                 {g.active ? "in active mode" : "inactive"}
               </span>
@@ -118,6 +128,11 @@ export function Dashboard() {
                 {g.queries.length} queries
               </span>
             </div>
+            {g.summary && (
+              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                {g.summary}
+              </div>
+            )}
             <ul>
               {g.queries.map((q) => (
                 <li key={q}>{q}</li>

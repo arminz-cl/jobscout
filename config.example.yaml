@@ -42,25 +42,40 @@ seniority: []                # [] = no filter · e.g. [3, 4] = associate + mid-s
 # Each string is one LinkedIn `keywords` value. Quotes force a phrase; OR / AND
 # are honored loosely by the guest endpoint — if results look wrong, split a
 # group into more, simpler single-phrase queries and lean on the assessor.
+# Each group: a display `title`, a one-line `summary` (shown on hover in the UI),
+# and its `queries`. A bare list of queries is also accepted (title falls back
+# to the group key).
 query_groups:
-  area_a:   # software engineer on data / data platform
-    - '"data platform engineer" OR "data infrastructure engineer"'
-    - '"software engineer" AND ("data platform" OR "data infrastructure" OR "data layer")'
-    - '"backend software engineer" AND (data OR streaming OR "distributed systems")'
-    - '"senior data engineer" AND (platform OR streaming OR distributed OR services OR kafka OR spark)'
+  area_a:
+    title: "A · SWE — data platforms"
+    summary: "Software engineer building data platforms/infra: distributed systems, service design, platform ownership."
+    queries:
+      - '"data platform engineer" OR "data infrastructure engineer"'
+      - '"software engineer" AND ("data platform" OR "data infrastructure" OR "data layer")'
+      - '"backend software engineer" AND (data OR streaming OR "distributed systems")'
+      - '"senior data engineer" AND (platform OR streaming OR distributed OR services OR kafka OR spark)'
 
-  area_b:   # AI / ML engineer
-    - '"AI engineer" OR "applied AI engineer" OR "AI developer"'
-    - '"machine learning engineer" OR "ML engineer"'
-    - '"ML platform engineer" OR "ML infrastructure engineer" OR "machine learning infrastructure"'
-    - '"LLM engineer" OR "generative AI engineer"'
+  area_b:
+    title: "B · AI Engineer"
+    summary: "Applied ML / ML systems / LLM product engineering: serving, retrieval, eval, ML infra, agents."
+    queries:
+      - '"AI engineer" OR "applied AI engineer" OR "AI developer"'
+      - '"machine learning engineer" OR "ML engineer"'
+      - '"ML platform engineer" OR "ML infrastructure engineer" OR "machine learning infrastructure"'
+      - '"LLM engineer" OR "generative AI engineer"'
 
-  area_c_customer:   # customer-facing / product SWE (only in intentional+)
-    - '"software engineer" AND (product OR "customer facing" OR "full stack")'
+  area_c_customer:
+    title: "C · SWE — customer-facing"
+    summary: "Product / customer-facing software engineering (intentional+ modes only)."
+    queries:
+      - '"software engineer" AND (product OR "customer facing" OR "full stack")'
 
-  broad:   # aggressive-mode wide net
-    - '"software engineer" OR "backend engineer" OR "software developer"'
-    - '"data engineer" OR "analytics engineer"'
+  broad:
+    title: "Broad net"
+    summary: "Wide catch-all for aggressive mode."
+    queries:
+      - '"software engineer" OR "backend engineer" OR "software developer"'
+      - '"data engineer" OR "analytics engineer"'
 
 modes:
   casual:      [area_a, area_b]

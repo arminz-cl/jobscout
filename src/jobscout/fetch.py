@@ -43,7 +43,7 @@ def run_fetch(
     source = get_source(cfg.source)
     last_run = db.last_successful_run_iso(conn, cfg.source)
     window = resolve_window(cfg, since, last_run)
-    queries = cfg.queries_for(groups) if do_cards else []
+    pairs = cfg.group_query_pairs(groups) if do_cards else []
     effective_groups = groups if groups is not None else list(cfg.mode_groups)
     if run_id is None:
         kind = "fetch" if do_cards else "backfill"
@@ -56,7 +56,7 @@ def run_fetch(
     if verbose:
         label = ",".join(groups) if groups else cfg.mode
         print(f"source={cfg.source}  groups={label}  window={window}  "
-              f"queries={len(queries)}  locations={len(cfg.locations)}  cards={do_cards}")
+              f"queries={len(pairs)}  locations={len(cfg.locations)}  cards={do_cards}")
 
     fetched = 0
     seen_ext: set[str] = set()
@@ -65,7 +65,7 @@ def run_fetch(
     note = None
 
     try:
-        for qi, query in enumerate(queries, 1):
+        for qi, (group_name, query) in enumerate(pairs, 1):
             if cancel and cancel.is_set():
                 stopped = True
                 break
@@ -77,6 +77,7 @@ def run_fetch(
                     if card.external_id in seen_ext:
                         continue
                     seen_ext.add(card.external_id)
+                    card.matched_group = group_name
                     pid, is_new = db.upsert_posting(conn, card, run_id=run_id)
                     if is_new:
                         new_ids.append(pid)
@@ -85,11 +86,11 @@ def run_fetch(
                 db.update_run_progress(
                     conn, run_id,
                     {"fetched": fetched, "unique": len(seen_ext), "new": len(new_ids)},
-                    note=f"searching {qi}/{len(queries)} @ {loc.label}",
+                    note=f"searching {qi}/{len(pairs)} @ {loc.label}",
                 )
                 if verbose:
-                    print(f"  [{qi}/{len(queries)}] {loc.label:28s} "
-                          f"{len(cards):3d} cards  (+{new_here} new)  :: {query[:60]}")
+                    print(f"  [{qi}/{len(pairs)}] {group_name:16s} {loc.label:24s} "
+                          f"{len(cards):3d} cards  (+{new_here} new)")
     except FetchError as e:
         partial = True
         note = str(e)

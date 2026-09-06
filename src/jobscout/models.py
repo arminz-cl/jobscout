@@ -34,6 +34,7 @@ class Posting:
 
     # populated by the query that surfaced it (useful for debugging match quality)
     matched_query: str | None = None
+    matched_group: str | None = None
     matched_location: str | None = None
 
 

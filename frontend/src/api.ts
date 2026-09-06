@@ -11,6 +11,8 @@ export interface AppConfig {
 
 export interface QueryGroup {
   name: string;
+  title: string;
+  summary: string;
   queries: string[];
   active: boolean;
 }
@@ -49,7 +51,13 @@ export interface Facets {
   assessed: number;
   unseen: number;
   starred: number;
-  by_group: { name: string; count: number; active: boolean }[];
+  by_group: {
+    name: string;
+    title: string;
+    summary: string;
+    count: number;
+    active: boolean;
+  }[];
   verdicts: Record<string, number>;
   workplace: Record<string, number>;
   companies: { name: string; count: number }[];
@@ -63,14 +71,14 @@ export const AREA_NAMES: Record<string, string> = {
   D: "Data Engineer",
 };
 
-// query-group name -> short label for run/filter chips
-const GROUP_LABELS: Record<string, string> = {
-  area_a: "A · SWE-data",
-  area_b: "B · AI Eng",
-  area_c_customer: "C · customer SWE",
-  broad: "broad",
+// query-group name -> short label for run/filter chips.
+// Titles come from the API (config-driven); this is the fallback / registry that
+// callers seed from `query-groups` or `facets.by_group`.
+export const groupTitles: Record<string, string> = {};
+export const seedGroupTitles = (gs: { name: string; title: string }[]) => {
+  for (const g of gs) groupTitles[g.name] = g.title;
 };
-export const groupLabel = (name: string) => GROUP_LABELS[name] ?? name;
+export const groupLabel = (name: string) => groupTitles[name] ?? name;
 export const groupsLabel = (csv: string | null | undefined) =>
   csv ? csv.split(",").map(groupLabel).join(" + ") : "—";
 
@@ -96,6 +104,7 @@ export interface Posting {
   comp_raw: string | null;
   posted_at: string | null;
   matched_query: string | null;
+  matched_group: string | null;
   first_run_id: number | null;
   seen_at: string | null;
   starred: number;

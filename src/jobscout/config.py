@@ -28,6 +28,14 @@ class Location:
 
 
 @dataclass(slots=True, frozen=True)
+class QueryGroup:
+    name: str                             # machine key, e.g. "area_a"
+    title: str                            # display title, e.g. "A · SWE · data platforms"
+    summary: str                          # one-line "what this group targets" for tooltips
+    queries: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True)
 class Config:
     profile_dir: Path
     eval_dir: Path
@@ -42,7 +50,7 @@ class Config:
     time_posted: str                      # "auto" or a pinned window
     sort_by: str
     seniority: list[int]
-    query_groups: dict[str, list[str]] = field(default_factory=dict)
+    query_groups: dict[str, QueryGroup] = field(default_factory=dict)
     mode_groups: list[str] = field(default_factory=list)   # group names active in `mode`
     queries: list[str] = field(default_factory=list)       # flattened queries for `mode`
 
@@ -65,10 +73,24 @@ class Config:
         for name in names:
             if name not in self.query_groups:
                 raise ConfigError(f"unknown query group: {name!r}")
-            for q in self.query_groups[name]:
+            for q in self.query_groups[name].queries:
                 if q not in seen:
                     seen.add(q)
                     out.append(q)
+        return out
+
+    def group_query_pairs(self, groups: list[str] | None) -> list[tuple[str, str]]:
+        """(group_name, query) in run order, first group wins a shared query."""
+        names = groups if groups is not None else self.mode_groups
+        out: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for name in names:
+            if name not in self.query_groups:
+                raise ConfigError(f"unknown query group: {name!r}")
+            for q in self.query_groups[name].queries:
+                if q not in seen:
+                    seen.add(q)
+                    out.append((name, q))
         return out
 
 
@@ -80,11 +102,25 @@ class ConfigError(RuntimeError):
     pass
 
 
-def _resolve_groups(raw: dict) -> tuple[dict[str, list[str]], list[str]]:
-    """Return (all query_groups, group names active in the current mode)."""
+def _resolve_groups(raw: dict) -> tuple[dict[str, QueryGroup], list[str]]:
+    """Return (all query_groups, group names active in the current mode).
+
+    Each group is `{title, summary, queries}`; a bare list of queries is also
+    accepted for backward compatibility.
+    """
     mode = raw.get("mode", "casual")
     modes = raw.get("modes", {})
-    groups = {k: list(v) for k, v in (raw.get("query_groups", {}) or {}).items()}
+    groups: dict[str, QueryGroup] = {}
+    for name, spec in (raw.get("query_groups", {}) or {}).items():
+        if isinstance(spec, list):
+            queries, title, summary = spec, name, ""
+        else:
+            queries = spec.get("queries", [])
+            title = spec.get("title") or name
+            summary = spec.get("summary", "")
+        if not queries:
+            raise ConfigError(f"query group {name!r} has no queries")
+        groups[name] = QueryGroup(name=name, title=title, summary=summary, queries=tuple(queries))
     if mode not in modes:
         raise ConfigError(f"mode {mode!r} not found in `modes:` ({sorted(modes)})")
     mode_groups = list(modes[mode])
@@ -126,7 +162,12 @@ def load(path: Path | None = None) -> Config:
 
     query_groups, mode_groups = _resolve_groups(raw)
     seen: set[str] = set()
-    queries = [q for g in mode_groups for q in query_groups[g] if not (q in seen or seen.add(q))]
+    queries = [
+        q
+        for g in mode_groups
+        for q in query_groups[g].queries
+        if not (q in seen or seen.add(q))
+    ]
     if not queries:
         raise ConfigError(f"mode {raw.get('mode', 'casual')!r} resolved to zero queries")
 

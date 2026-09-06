@@ -80,11 +80,13 @@ def query_groups():
         raise HTTPException(400, str(e)) from e
     return [
         {
-            "name": name,
-            "queries": queries,
-            "active": name in cfg.mode_groups,
+            "name": g.name,
+            "title": g.title,
+            "summary": g.summary,
+            "queries": list(g.queries),
+            "active": g.name in cfg.mode_groups,
         }
-        for name, queries in cfg.query_groups.items()
+        for g in cfg.query_groups.values()
     ]
 
 
@@ -169,13 +171,14 @@ def postings(
     queries = None
     if group:
         try:
-            queries = load().query_groups.get(group, []) or ["\0none\0"]
+            g = load().query_groups.get(group)
+            queries = list(g.queries) if g else None
         except ConfigError as e:
             raise HTTPException(400, str(e)) from e
     rows = db.list_postings(
-        conn, query=query, queries=queries, run_id=run_id, company=company, verdict=verdict,
-        assessed=assessed, has_description=has_description, seen=seen, starred=starred,
-        status=status, search=search, order=order, limit=limit, offset=offset,
+        conn, query=query, group=group, queries=queries, run_id=run_id, company=company,
+        verdict=verdict, assessed=assessed, has_description=has_description, seen=seen,
+        starred=starred, status=status, search=search, order=order, limit=limit, offset=offset,
     )
     return {"count": len(rows), "results": [_row(r) for r in rows]}
 
@@ -196,14 +199,23 @@ def posting_facets():
     unseen = conn.execute("SELECT COUNT(*) FROM postings WHERE seen_at IS NULL").fetchone()[0]
     starred = conn.execute("SELECT COUNT(*) FROM postings WHERE starred = 1").fetchone()[0]
     by_group = []
-    for name, qs in cfg.query_groups.items():
-        if not qs:
-            continue
+    for g in cfg.query_groups.values():
+        qs = list(g.queries)
         placeholders = ",".join("?" * len(qs))
         n = conn.execute(
-            f"SELECT COUNT(*) FROM postings WHERE matched_query IN ({placeholders})", qs
+            f"SELECT COUNT(*) FROM postings WHERE matched_group = ? "
+            f"OR matched_query IN ({placeholders})",
+            [g.name, *qs],
         ).fetchone()[0]
-        by_group.append({"name": name, "count": n, "active": name in cfg.mode_groups})
+        by_group.append(
+            {
+                "name": g.name,
+                "title": g.title,
+                "summary": g.summary,
+                "count": n,
+                "active": g.name in cfg.mode_groups,
+            }
+        )
     verdicts = {
         r["verdict"]: r["n"]
         for r in conn.execute("SELECT verdict, COUNT(*) n FROM assessments GROUP BY verdict")
