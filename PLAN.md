@@ -1,16 +1,20 @@
-# Jobscout — MVP plan
+# jobscout — MVP plan
 
-A tool I run on demand that pulls fresh job postings matching my profile, scores each one with the [[../../jds/assessment-guide]] rubric, and drops a ranked shortlist into this repo.
+A tool run on demand that pulls fresh job postings matching a profile, scores each one with an
+LLM against a rubric (`assessment-guide.md` in the private career repo), and drops a ranked
+shortlist into the output directory.
 
-Doubles as **Portfolio Project 1** ([[../../gaps]] #1, #5): real source integration + LLM app + eval harness + a CLI.
+Also a portfolio project: real source integration + LLM app + eval harness + a CLI + a local web app.
 
 ## Repo split
 
-- **Code → new public repo `jobscout`** (proposed: `~/Desktop/jobscout`, `arminz-cl`, start private → flip public once README + eval look good).
-- **This (private) repo keeps:** this PLAN, the real profile docs, the daily output (`jds/daily/`), the real eval labels (`jds/assessments/`).
-- **Link:** jobscout's `config.yaml` (gitignored) sets `profile_dir` + `output_dir` to point into this repo on my machine. It reads the real profile from here and writes the daily list back to `jds/daily/` — neither touches the public repo.
-- **Public repo ships:** `src/`, `README.md` (neutral), `config.example.yaml`, `profile.example/` (sanitized), optional `eval/` fixture (JD text + verdict labels, company names → "Company A").
-- `.gitignore` (public): `.env`, `jobscout.db`, `config.yaml`.
+- **This repo (`jobscout`) is public and ships only code:** `src/`, `frontend/`, `README.md`,
+  `config.example.yaml`, `profile.example/` (sanitized), optional `eval/` fixture (JD text +
+  verdict labels, company names → "Company A").
+- **A separate private "career repo"** holds the real profile docs, the real eval labels, and the
+  daily output. jobscout's `config.yaml` (gitignored) points `profile_dir` / `eval_dir` /
+  `output_dir` into it. Nothing personal is committed here.
+- `.gitignore`: `.env`, `jobscout.db`, `config.yaml`.
 
 ---
 
@@ -19,7 +23,7 @@ Doubles as **Portfolio Project 1** ([[../../gaps]] #1, #5): real source integrat
 **In:**
 - Pull postings from **one** job source, for a fixed set of profile-derived queries.
 - Dedupe against what's already been seen.
-- Score each new posting with Claude against my profile + the rubric → `area / target_quality / chance / verdict / one-line reasoning`.
+- Score each new posting with an LLM against the profile + the rubric → `area / target_quality / chance / verdict / one-line reasoning`.
 - Write `jds/daily/YYYY-MM-DD.md` — pursue + maybe grouped and ranked, skips collapsed to a count.
 - Run automatically once a day; commit the file.
 
@@ -42,40 +46,35 @@ Cautionary tale: Proxycurl (paid LinkedIn data API) was shut down late 2024 unde
 
 **Decision for MVP:**
 - Build a **pluggable `Source` interface** (`fetch(query, location) -> list[Posting]`, `fetch_description(posting) -> str`).
-- Ship two adapters: **`linkedin_guest`** (the one I actually want) and **`jsearch`** (clean fallback / public-demo mode).
+- Ship two adapters: **`linkedin_guest`** (primary) and **`jsearch`** (clean fallback / public-demo mode).
 - **Run locally on cron** (not GitHub Actions) so the guest endpoint isn't hitting a blocked cloud IP. Polite delay (2–4s) between requests; cache descriptions; cap queries/run.
 - Frame the project around the assessor + eval (the real value), not the scraper — the source is one swappable module.
 
-"Matching my profile" in the MVP = a fixed query list derived from [[../../target-areas]], not a personalized LinkedIn feed.
+"Matching the profile" in the MVP = a fixed query list derived from the role taxonomy, not a personalized LinkedIn feed.
 
 ---
 
 ## Architecture
 
 ```
-jobscout run   (I trigger it manually when I want a fresh list)
-  └─ fetch.py      queries → Source adapter → raw postings + descriptions (JSON)
-  └─ store.py      dedupe by (source, external_id); upsert into SQLite
-  └─ assess.py     for each NEW posting: Claude API (profile pack + rubric + JD) → verdict JSON → store
+jobscout run   (manual trigger, or the local web app's Run buttons)
+  └─ fetch.py      queries → Source adapter → raw postings + descriptions
+  └─ db.py         dedupe by (source, external_id); upsert into SQLite
+  └─ assess.py     for each NEW posting: LLM (profile pack + rubric + JD) → verdict JSON → store
   └─ report.py     query DB → render <output_dir>/jds/daily/<date>.md
-  └─ (I review, then git commit the daily file in the private repo)
+  └─ (review, then git commit the daily file in the private repo)
 ```
 
-- **Language:** Python.
+- **Language:** Python; frontend in React + Vite.
 - **State:** SQLite (`jobscout.db`), gitignored.
 - **Source:** pluggable `Source` interface; adapters `linkedin_guest` (primary) and `jsearch` (fallback/demo).
-- **LLM:** Claude API (`claude-sonnet-5`), structured output (tool/JSON schema), temperature 0.
-- **Config:** `config.yaml` — queries, locations, active source, model, thresholds, request delay.
+- **LLM:** Claude API, structured output (tool/JSON schema), temperature 0.
+- **Config:** `config.yaml` — query groups, locations, active source, model, request delay.
 - **Secrets:** `.env` (`ANTHROPIC_API_KEY`, `RAPIDAPI_KEY` if using jsearch).
 
-### Queries (MVP, from target-areas)
-```
-"data platform engineer"    | Toronto, Remote Canada
-"software engineer data"     | Toronto, Remote Canada
-"data infrastructure engineer"
-"backend software engineer"  (filter later on data/systems signal)
-"AI engineer" / "ML platform engineer" / "machine learning engineer"
-```
+### Query groups (from the role taxonomy)
+Grouped by target area (A/B/C/D), each group a small set of `keywords` strings.
+See `config.example.yaml` for the shipped defaults.
 
 ---
 
@@ -101,11 +100,11 @@ status(            -- my manual overrides, so the tool doesn't re-surface handle
 
 ## The assessor
 
-**Profile pack** (assembled once per run, passed in the prompt): condensed pull from
-[[../../experience-raw]] (roles + skills), [[../../gaps]] (#8 tech gaps), [[../../target-areas]] (A/B/C/D + read-the-JD),
-[[../../evaluating-offers]] (trajectory bar + comp baseline), [[../../intention-modes]] (current mode).
+**Profile pack** (assembled once per run, passed in the prompt): condensed pull from the private
+career repo — roles + skills, tech gaps to detect, the role taxonomy (A/B/C/D + read-the-JD), the
+trajectory bar + comp baseline, the current job-search mode.
 
-**Prompt:** profile pack + the full [[../../jds/assessment-guide]] rubric + one JD → returns:
+**Prompt:** profile pack + the full `assessment-guide.md` rubric + one JD → returns:
 ```json
 {
   "area": "A|B|C|D",
@@ -143,31 +142,49 @@ Committed to the repo → shows up in my normal review flow, diffable day to day
 
 ## Running it
 
-**MVP: manual trigger.** `jobscout run` (or `make run`) whenever I want a fresh list — no scheduler to build or babysit, and it sidesteps the cloud-IP block on the guest source. Add `--dry-run` (fetch + assess, don't write) and `--source jsearch` overrides.
+**Manual trigger.** Either:
+- `jobscout serve` → the local web app (Dashboard has per-group Run buttons, live progress).
+- `jobscout fetch` / (later) `jobscout run` on the CLI.
 
-**Later (optional):** local `cron` / `launchd` for a daily auto-run; or GitHub Actions **only** with the `jsearch` source (guest endpoint is blocked from cloud IPs).
+No scheduler to babysit, and it sidesteps the cloud-IP block on the guest source (which needs a
+residential IP).
+
+**Later (optional):** local `cron` / `launchd` for a daily auto-run; or GitHub Actions **only**
+with the `jsearch` source (guest endpoint is blocked from cloud IPs).
 
 ---
 
 ## Eval (the "does it work" measure)
 
-I have **15 hand-scored JDs** in `jds/assessments/` + `assessments.csv` — a labeled set.
+A set of **hand-scored JDs** (`assessments.csv` + `processed/*.md` in the private career repo) is
+the labeled set.
 
-- `eval.py` runs the assessor over those 15 JDs, compares `verdict` and `area` to my labels.
+- `eval.py` runs the assessor over them, compares `verdict` and `area` to the labels.
 - Metrics: verdict exact-match %, pursue/skip confusion matrix, area accuracy. Target for MVP: **≥12/15 verdicts match, no pursue↔skip flips** (med↔pursue drift is tolerable).
-- Re-run on any prompt change. This is the portfolio artifact's rigor story ([[../../gaps]] #5).
+- Re-run on any prompt change. This is the project's rigor story.
 
 ---
 
-## Build order (~1 week of evenings)
+## Roadmap
 
-1. **Day 1** — repo skeleton, `config.yaml`, SQLite schema, `Source` interface + `linkedin_guest.fetch()` for one query, print results.
-2. **Day 2** — `linkedin_guest.fetch_description()` (the N+1); `store.py` dedupe/upsert; all queries; polite delay; normalize fields.
-3. **Day 3** — `assess.py`: profile-pack builder + Claude call + JSON schema + store. Run on 5 real postings, eyeball.
-4. **Day 4** — `eval.py` against the 15 labeled JDs; tune the prompt until it passes the bar.
-5. **Day 5** — `report.py` → daily markdown; `status` overrides so handled jobs don't recur.
-6. **Day 6** — `jobscout run` CLI entrypoint (`--dry-run`, `--source`); `jsearch` adapter as fallback; end-to-end run on real queries.
-7. **Day 7** — README with architecture diagram + eval results; `profile.example/`; tests for `store` (dedupe) and `report` (rendering); tidy.
+The overall timeline. Each step is small enough to finish in a sitting; the **current step gets
+its own detailed plan file** (e.g. `ASSESSOR.md`), which this file links to.
+
+| # | Step | State |
+|---|---|---|
+| 1 | Skeleton, `config.yaml`, SQLite schema, `Source` interface, `linkedin_guest.fetch()` | ✅ done |
+| 2 | `fetch_description()` (N+1); dedupe/upsert; all query groups; polite delay; `runs` tracking | ✅ done |
+| — | *(ahead of plan)* local web app — FastAPI + React SPA: Dashboard / Runs / Companies / Postings, per-group runs, cards/descriptions phase split, filters, star/seen/status | ✅ done |
+| 3 | **The assessor** — `assess.py`: profile-pack builder + Claude call + schema + store → **see `ASSESSOR.md`** | ⏳ current |
+| 4 | `eval.py` against the labeled JDs; tune the prompt until it clears the bar; commit `eval-results.md` | next |
+| 5 | `report.py` → daily markdown; wire `status` overrides into the report | next |
+| 6 | `jobscout run` end-to-end (fetch → assess → report); `jsearch` adapter as the cloud-safe fallback | next |
+| 7 | README (architecture diagram + eval numbers); `profile.example/`; `eval/` fixture; tests (`db` dedupe, `report` rendering, `config`); `launchd` example | next |
+
+Open review items carried forward (from a code-review pass):
+- No cross-process lock — a CLI `jobscout fetch` and a web-triggered run can hit LinkedIn at once.
+- A partial-group run currently advances the global "last run" window; should be per-group.
+- No tests yet.
 
 ---
 
@@ -175,8 +192,8 @@ I have **15 hand-scored JDs** in `jds/assessments/` + `assessments.csv` — a la
 
 - Personalized LinkedIn feed / logged-in scraping
 - Multi-source + cross-source dedupe (same job on LinkedIn + Greenhouse)
-- Feedback loop: I mark good/bad → few-shot examples or threshold tuning
-- Auto-generate a tailored resume draft for `pursue` hits (ties into `resumes/_template`)
-- Web dashboard
+- Feedback loop: mark good/bad → few-shot examples or threshold tuning
+- Auto-generate a tailored resume draft for `pursue` hits
 - Comp inference when the posting omits it
 - Company-health / Glassdoor signal in the trajectory score
+- Per-company rating that actually feeds the assessor (the `companies.rating` column exists; unused)
