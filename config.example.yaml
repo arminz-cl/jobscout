@@ -1,0 +1,68 @@
+# jobscout config — copy to config.yaml and fill in local paths + secrets.
+# config.yaml is gitignored; this example is committed with placeholders only.
+
+# --- Where the private profile / rubric / eval / output live -------------------
+# Read at runtime. Never copied into this repo.
+paths:
+  profile_dir: "~/path/to/career-repo"          # experience-raw.md, gaps.md, target-areas.md,
+                                                # intention-modes.md, evaluating-offers.md
+  eval_dir:    "~/path/to/career-repo/jds"       # assessment-guide.md, assessments/, assessments.csv, processed/
+  output_dir:  "~/path/to/career-repo"           # daily list -> <output_dir>/jds/daily/<date>.md
+
+# --- LLM ----------------------------------------------------------------------
+model: "claude-sonnet-5"
+temperature: 0
+
+# --- Job source -------------------------------------------------------------
+source: linkedin_guest        # linkedin_guest | jsearch
+request_delay_sec: [2, 4]     # polite random delay between requests
+max_results_per_query: 75     # cap pagination per query (LinkedIn hard cap ~1000)
+
+# --- Search --------------------------------------------------------------------
+# `mode` selects which query groups are active (see modes: below).
+#   casual      -> Areas A + B only (tight, high-precision)
+#   intentional -> A + B + customer-facing C
+#   aggressive  -> broad net
+mode: casual
+
+locations:
+  # The location string alone resolves correctly on the guest endpoint. Adding a
+  # geo_id is optional and risky: a wrong one silently overrides the string and
+  # you get the wrong country. Only add geo_id if you've confirmed it in a real
+  # search URL and the string alone is ambiguous.
+  - label: "Toronto, Ontario, Canada"
+  - label: "Canada"
+    work_type: 2              # 2 = remote — catches country-level remote posts a Toronto search misses
+
+time_posted: auto            # auto = derive window from last run · or pin: r86400 / r604800 / r2592000
+sort_by: "DD"                 # DD = newest first · R = relevance
+seniority: []                # [] = no filter · e.g. [3, 4] = associate + mid-senior
+
+# Query groups are defined once here and composed per mode below.
+# Each string is one LinkedIn `keywords` value. Quotes force a phrase; OR / AND
+# are honored loosely by the guest endpoint — if results look wrong, split a
+# group into more, simpler single-phrase queries and lean on the assessor.
+query_groups:
+  area_a:   # software engineer on data / data platform
+    - '"data platform engineer" OR "data infrastructure engineer"'
+    - '"software engineer" AND ("data platform" OR "data infrastructure" OR "data layer")'
+    - '"backend software engineer" AND (data OR streaming OR "distributed systems")'
+    - '"senior data engineer" AND (platform OR streaming OR distributed OR services OR kafka OR spark)'
+
+  area_b:   # AI / ML engineer
+    - '"AI engineer" OR "applied AI engineer" OR "AI developer"'
+    - '"machine learning engineer" OR "ML engineer"'
+    - '"ML platform engineer" OR "ML infrastructure engineer" OR "machine learning infrastructure"'
+    - '"LLM engineer" OR "generative AI engineer"'
+
+  area_c_customer:   # customer-facing / product SWE (only in intentional+)
+    - '"software engineer" AND (product OR "customer facing" OR "full stack")'
+
+  broad:   # aggressive-mode wide net
+    - '"software engineer" OR "backend engineer" OR "software developer"'
+    - '"data engineer" OR "analytics engineer"'
+
+modes:
+  casual:      [area_a, area_b]
+  intentional: [area_a, area_b, area_c_customer]
+  aggressive:  [area_a, area_b, area_c_customer, broad]
