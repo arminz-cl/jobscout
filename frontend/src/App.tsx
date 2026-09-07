@@ -110,7 +110,6 @@ function ActivityPill({ rs }: { rs: RunnerState | null }) {
   const failed = /failed/i.test(a);
   const stopped = a === "stopped";
 
-  // stamp when this status value first arrived, so the countdown keeps ticking between polls
   const key = `${a}|${rs.activity_age}`;
   if (recvRef.current.key !== key) recvRef.current = { key, at: Date.now() };
 
