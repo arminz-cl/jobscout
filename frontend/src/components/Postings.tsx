@@ -116,9 +116,9 @@ export function Postings({
         </select>
         <select value={level} onChange={(e) => setLevel(e.target.value)} title="assessment level">
           <option value="">any assessed state</option>
-          <option value="0">not assessed{facets ? ` (${facets.levels["0"]})` : ""}</option>
-          <option value="1">triaged only{facets ? ` (${facets.levels["1"]})` : ""}</option>
-          <option value="2">deep-assessed{facets ? ` (${facets.levels["2"]})` : ""}</option>
+          <option value="0">not assessed{facets?.levels ? ` (${facets.levels["0"]})` : ""}</option>
+          <option value="1">triaged only{facets?.levels ? ` (${facets.levels["1"]})` : ""}</option>
+          <option value="2">deep-assessed{facets?.levels ? ` (${facets.levels["2"]})` : ""}</option>
         </select>
         {mode === "assessed" && (
           <select value={verdict} onChange={(e) => setVerdict(e.target.value)}>
