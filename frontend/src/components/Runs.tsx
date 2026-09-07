@@ -12,14 +12,14 @@ const statusColor = (s: string | null) =>
           ? "var(--accent)"
           : "var(--muted)";
 
-function progressPct(run: Run): number {
+const isAssessKind = (k: string | null) => k === "triage" || k === "deep";
+
+// the runner notes all look like "<phase> N/M ..." — just read the N/M
+export function progressPct(run: Run): number {
   if (run.status && run.status !== "running") return 100;
-  const n = run.note ?? "";
-  const d = n.match(/descriptions (\d+)\/(\d+)/);
-  const s = n.match(/searching (\d+)\/(\d+)/);
-  if (d) return 50 + (50 * +d[1]) / Math.max(1, +d[2]);
-  if (s) return (50 * +s[1]) / Math.max(1, +s[2]);
-  return 3;
+  const m = (run.note ?? "").match(/(\d+)\s*\/\s*(\d+)/);
+  if (m) return Math.max(3, Math.min(100, (100 * +m[1]) / Math.max(1, +m[2])));
+  return 4;
 }
 
 function duration(run: Run): string {
@@ -78,7 +78,7 @@ export function Runs({ onOpenRun }: { onOpenRun: (id: number) => void }) {
             <th>Window</th>
             <th>Started</th>
             <th>Duration</th>
-            <th>Unique / New</th>
+            <th>Result</th>
             <th>Status</th>
             <th></th>
           </tr>
@@ -97,7 +97,13 @@ export function Runs({ onOpenRun }: { onOpenRun: (id: number) => void }) {
               <td className="muted">{new Date(r.started_at).toLocaleString()}</td>
               <td className="muted">{duration(r)}</td>
               <td>
-                {r.n_unique} / <b>{r.n_new}</b>
+                {isAssessKind(r.kind) ? (
+                  <><b>{r.n_assessed}</b> assessed</>
+                ) : r.kind === "backfill" ? (
+                  <><b>{r.n_new}</b> descriptions</>
+                ) : (
+                  <>{r.n_unique} seen · <b>{r.n_new}</b> new</>
+                )}
                 {r.status === "running" && (
                   <div className="progress" style={{ marginTop: 4 }}>
                     <div style={{ width: `${progressPct(r)}%` }} />
@@ -122,7 +128,7 @@ export function Runs({ onOpenRun }: { onOpenRun: (id: number) => void }) {
                   >
                     ■ stop
                   </button>
-                ) : (
+                ) : isAssessKind(r.kind) ? null : (
                   <button
                     style={{ fontSize: 12, padding: "2px 8px" }}
                     onClick={() => onOpenRun(r.id)}

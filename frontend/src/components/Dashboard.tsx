@@ -9,6 +9,7 @@ import {
   RunnerState,
   seedGroupTitles,
 } from "../api";
+import { progressPct } from "./Runs";
 
 const SINCE_OPTIONS = [
   { value: "", label: "auto (from last run)" },
@@ -243,15 +244,7 @@ function RunList({
       {runs.map((run) => {
         const running = run.status === "running";
         const note = run.note ?? "";
-        let pct = running ? 3 : 100;
-        const m =
-          note.match(/descriptions (\d+)\/(\d+)/) ||
-          note.match(/assessing (\d+)\/(\d+)/) ||
-          note.match(/searching (\d+)\/(\d+)/);
-        if (m) {
-          const base = note.startsWith("descriptions") || note.startsWith("assessing") ? 0 : 0;
-          pct = base + (100 * +m[1]) / Math.max(1, +m[2]);
-        }
+        const pct = progressPct(run);
         return (
           <div key={run.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
             <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
