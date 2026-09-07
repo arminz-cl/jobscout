@@ -34,7 +34,7 @@ _activity = "idle"            # fine-grained live status for the UI
 _activity_at = 0.0
 _wait_until = 0.0             # unix ts the current backoff sleep ends (0 = not waiting)
 
-_WAIT_RE = re.compile(r"waiting (\d+)s")
+_WAIT_RE = re.compile(r"next call in (\d+)s")
 
 
 def _set_activity(msg: str) -> None:

@@ -117,7 +117,7 @@ export function Runs({ onOpenRun }: { onOpenRun: (id: number) => void }) {
                 {r.status === "running" && rs?.current_run_id === r.id && (
                   <div className="muted" style={{ fontSize: 11 }}>
                     {(rs.wait_remaining ?? 0) > 0 ? (
-                      <span style={{ color: "var(--maybe)" }}>⏳ retry in {rs.wait_remaining}s</span>
+                      <span style={{ color: "var(--maybe)" }}>⏳ next call in {rs.wait_remaining}s</span>
                     ) : (
                       rs.activity
                     )}

@@ -272,7 +272,7 @@ function RunList({
               )}
               {running && runner?.current_run_id === run.id && (runner.wait_remaining ?? 0) > 0 && (
                 <span className="pill" style={{ color: "var(--maybe)" }}>
-                  ⏳ retry in {runner.wait_remaining}s
+                  ⏳ next call in {runner.wait_remaining}s
                 </span>
               )}
               <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>

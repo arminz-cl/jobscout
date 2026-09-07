@@ -112,12 +112,12 @@ function ActivityPill({ rs }: { rs: RunnerState | null }) {
   const key = `${a}|${rs.activity_age}`;
   if (recvRef.current.key !== key) recvRef.current = { key, at: Date.now() };
 
-  const m = a.match(/waiting (\d+)s/);
+  const m = a.match(/next call in (\d+)s/);
   const rateLimited = !!m || /rate-limited/i.test(a);
   if (m) {
     const localElapsed = (Date.now() - recvRef.current.at) / 1000;
     const left = Math.max(0, Math.round(+m[1] - (rs.activity_age ?? 0) - localElapsed));
-    a = a.replace(/waiting \d+s/, `retry in ${left}s`);
+    a = a.replace(/next call in \d+s/, `next call in ${left}s`);
   }
 
   const active = rs.busy || (a !== "idle" && !stopped && !failed);

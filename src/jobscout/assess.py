@@ -247,7 +247,7 @@ def _chat_raw(ac: AssessorConfig, system: str, user: str, *, json_mode: bool) ->
         r = httpx.post(url, headers=headers, json=body, timeout=180.0)
         if r.status_code == 429:
             wait = float(r.headers.get("retry-after", 0)) or min(15 * (attempt + 1), 60)
-            _status(f"{host} rate-limited — waiting {round(wait)}s (retry {attempt + 1}/4)")
+            _status(f"{host} rate-limited · next call in {round(wait)}s ({attempt + 1}/4)")
             time.sleep(wait)
             continue
         if r.status_code == 413:
