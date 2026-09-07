@@ -169,7 +169,11 @@ def postings_missing_description(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 
 
 def postings_pending_assessment(
-    conn: sqlite3.Connection, *, run_id: int | None = None, limit: int | None = None
+    conn: sqlite3.Connection,
+    *,
+    run_id: int | None = None,
+    groups: list[str] | None = None,
+    limit: int | None = None,
 ) -> list[sqlite3.Row]:
     """Level 0: have a description, no assessment yet — for the triage (batch) pass."""
     sql = (
@@ -180,6 +184,9 @@ def postings_pending_assessment(
     if run_id is not None:
         sql += " AND p.first_run_id = ?"
         params.append(run_id)
+    if groups:
+        sql += f" AND p.matched_group IN ({','.join('?' * len(groups))})"
+        params += groups
     sql += " ORDER BY p.first_seen_at DESC"
     if limit:
         sql += " LIMIT ?"
@@ -187,14 +194,38 @@ def postings_pending_assessment(
     return conn.execute(sql, params).fetchall()
 
 
-def postings_for_deep(conn: sqlite3.Connection, *, limit: int = 15) -> list[sqlite3.Row]:
-    """Level 1: triaged (method='batch') but not deep-assessed — highest score first."""
-    return conn.execute(
+def postings_for_deep(
+    conn: sqlite3.Connection, *, limit: int = 15, balance_groups: list[str] | None = None
+) -> list[sqlite3.Row]:
+    """Level 1: triaged (method='batch') but not deep-assessed — highest score first.
+
+    `balance_groups`: interleave the highest-scored postings across these groups
+    (A#1, B#1, A#2, B#2, …) instead of a single global ranking.
+    """
+    base = (
         "SELECT p.* FROM postings p JOIN assessments a ON a.posting_id = p.id "
         "WHERE a.method = 'batch' AND p.description IS NOT NULL AND p.description != '' "
-        "ORDER BY a.score_overall DESC, p.first_seen_at DESC LIMIT ?",
-        (limit,),
-    ).fetchall()
+    )
+    if not balance_groups:
+        return conn.execute(
+            base + "ORDER BY a.score_overall DESC, p.first_seen_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+
+    per = {
+        g: conn.execute(
+            base + "AND p.matched_group = ? ORDER BY a.score_overall DESC, p.first_seen_at DESC LIMIT ?",
+            (g, limit),
+        ).fetchall()
+        for g in balance_groups
+    }
+    out: list = []
+    i = 0
+    while len(out) < limit and any(i < len(per[g]) for g in balance_groups):
+        for g in balance_groups:
+            if i < len(per[g]) and len(out) < limit:
+                out.append(per[g][i])
+        i += 1
+    return out
 
 
 def assessment_counts(conn: sqlite3.Connection) -> dict:

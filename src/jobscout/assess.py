@@ -317,6 +317,7 @@ def triage_pending(
     cfg: Config,
     *,
     run_id: int | None = None,
+    groups: list[str] | None = None,
     limit: int | None = None,
     progress=None,
     cancel=None,
@@ -324,7 +325,7 @@ def triage_pending(
     """Tier 1 over level-0 postings (have a description, no assessment)."""
     if cfg.assessor is None:
         raise AssessError("no `assessor:` section in config.yaml")
-    rows = db.postings_pending_assessment(conn, run_id=run_id, limit=limit)
+    rows = db.postings_pending_assessment(conn, run_id=run_id, groups=groups, limit=limit)
     items = [_row_item(r) for r in rows]
     bs = max(1, cfg.assessor.batch_size)
     done = failed = 0
@@ -355,13 +356,15 @@ def deep_top(
     cfg: Config,
     *,
     limit: int = 15,
+    balance_groups: list[str] | None = None,
     progress=None,
     cancel=None,
 ) -> dict:
-    """Tier 2 on the top `limit` level-1 postings by score_overall."""
+    """Tier 2 on the top `limit` level-1 postings by score_overall.
+    `balance_groups` interleaves the ranking across those groups."""
     if cfg.assessor is None:
         raise AssessError("no `assessor:` section in config.yaml")
-    rows = db.postings_for_deep(conn, limit=limit)
+    rows = db.postings_for_deep(conn, limit=limit, balance_groups=balance_groups)
     done = failed = 0
     for i, row in enumerate(rows):
         if cancel and cancel.is_set():

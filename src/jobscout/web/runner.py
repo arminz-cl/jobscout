@@ -109,9 +109,12 @@ def _run_job(
     conn = db.connect(cfg.db_path)
     try:
         if phase == "triage":
-            _triage(conn, cfg, run_id, cancel, scope_run_id=None, limit=assess_limit)
+            # for a triage phase, `groups` (if the caller passed a subset) narrows to those areas
+            tg = groups if groups is not None and groups != list(cfg.mode_groups) else None
+            _triage(conn, cfg, run_id, cancel, scope_run_id=None, groups=tg, limit=assess_limit)
         elif phase == "deep":
-            _deep(conn, cfg, run_id, cancel, limit=assess_limit or 15)
+            bg = groups if groups is not None and groups != list(cfg.mode_groups) else None
+            _deep(conn, cfg, run_id, cancel, limit=assess_limit or 15, balance_groups=bg)
         else:
             result = run_fetch(
                 conn, cfg, groups=groups, since=since, verbose=True, run_id=run_id, cancel=cancel,
@@ -130,7 +133,7 @@ def _run_job(
         conn.close()
 
 
-def _triage(conn, cfg, run_id, cancel, *, scope_run_id, limit=None) -> None:
+def _triage(conn, cfg, run_id, cancel, *, scope_run_id, groups=None, limit=None) -> None:
     from ..assess import triage_pending
 
     def progress(done, failed, total):
@@ -138,11 +141,13 @@ def _triage(conn, cfg, run_id, cancel, *, scope_run_id, limit=None) -> None:
             conn, run_id, {"assessed": done}, note=f"triage {done}/{total} ({failed} failed)"
         )
 
-    res = triage_pending(conn, cfg, run_id=scope_run_id, limit=limit, progress=progress, cancel=cancel)
+    res = triage_pending(
+        conn, cfg, run_id=scope_run_id, groups=groups, limit=limit, progress=progress, cancel=cancel
+    )
     _finish_assess(conn, run_id, res, cancel)
 
 
-def _deep(conn, cfg, run_id, cancel, *, limit) -> None:
+def _deep(conn, cfg, run_id, cancel, *, limit, balance_groups=None) -> None:
     from ..assess import deep_top
 
     def progress(done, failed, total):
@@ -150,7 +155,9 @@ def _deep(conn, cfg, run_id, cancel, *, limit) -> None:
             conn, run_id, {"assessed": done}, note=f"deep {done}/{total} ({failed} failed)"
         )
 
-    res = deep_top(conn, cfg, limit=limit, progress=progress, cancel=cancel)
+    res = deep_top(
+        conn, cfg, limit=limit, balance_groups=balance_groups, progress=progress, cancel=cancel
+    )
     _finish_assess(conn, run_id, res, cancel)
 
 
