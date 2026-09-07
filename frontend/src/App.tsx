@@ -6,9 +6,18 @@ import { Runs } from "./components/Runs";
 import { Companies } from "./components/Companies";
 
 type Tab = "dashboard" | "runs" | "companies" | "postings" | "assessments";
+const TABS: Tab[] = ["dashboard", "runs", "companies", "postings", "assessments"];
+const hashTab = (): Tab => {
+  const h = window.location.hash.replace("#", "") as Tab;
+  return TABS.includes(h) ? h : "dashboard";
+};
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTabState] = useState<Tab>(hashTab);
+  const setTab = (t: Tab) => {
+    window.location.hash = t;
+    setTabState(t);
+  };
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [runFilter, setRunFilter] = useState<number | null>(null);
