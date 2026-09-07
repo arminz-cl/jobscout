@@ -198,7 +198,7 @@ export function Postings({
         }}
       >
         <span className="muted"><b style={{ color: "var(--text)" }}>Score</b> shown as <b>overall</b> · chance · quality (0–100):</span>
-        <span><b>overall</b> — combined fit</span>
+        <span><b>overall</b> — weighted blend of quality &amp; chance (casual mode leans on quality)</span>
         <span><b>chance</b> — odds of landing it (your profile vs. the JD)</span>
         <span><b>quality</b> — how good the role is if landed (trajectory bar)</span>
         <span className="muted" style={{ width: "100%" }}>

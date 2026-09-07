@@ -23,6 +23,9 @@ assessor:
   model: "llama-3.3-70b-versatile"
   base_url: "https://api.groq.com/openai/v1"
   temperature: 0
+  # quality_weight: 0.7   # 0-1 share of the overall score driven by role quality
+  #                       # (rest is chance). Omit to pick from `mode`:
+  #                       # casual 0.70 · active 0.50 · urgent 0.35
 
 # --- Job source -------------------------------------------------------------
 source: linkedin_guest        # linkedin_guest | jsearch

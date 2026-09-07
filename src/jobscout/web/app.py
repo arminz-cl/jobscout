@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import db
+from .. import assess, db
 from ..config import ConfigError, load, resolve_window
 from . import runner
 
@@ -70,6 +70,9 @@ def get_config():
         "resolved_window": resolve_window(cfg, None, last_run),
         "last_run": last_run,
         "max_results_per_query": cfg.max_results_per_query,
+        "quality_weight": (
+            round(assess._quality_weight(cfg), 2) if cfg.assessor else None
+        ),
     }
 
 

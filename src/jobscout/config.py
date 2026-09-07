@@ -47,6 +47,8 @@ class AssessorConfig:
     api_key: str | None                   # resolved from .env, never from yaml
     batch_size: int = 8                   # JDs per triage request
     triage_jd_chars: int = 1800           # how much of each JD to send in triage
+    quality_weight: float | None = None   # 0-1 share of overall driven by target_quality
+                                          # (rest is chance); None -> pick from search mode
 
     @property
     def model_tag(self) -> str:
@@ -256,6 +258,9 @@ def _resolve_assessor(raw: dict | None) -> AssessorConfig | None:
         api_key=key,
         batch_size=int(raw.get("batch_size", 8)),
         triage_jd_chars=int(raw.get("triage_jd_chars", 1800)),
+        quality_weight=(
+            float(raw["quality_weight"]) if raw.get("quality_weight") is not None else None
+        ),
     )
 
 

@@ -158,6 +158,8 @@ Assess the one posting below. Work in tiers, not fine-grained numbers.
 - comp clearly below baseline AND no trajectory fix -> skip regardless.
 - maybe = borderline on one axis.
 - skip = fails the above, or a hard blocker (10+ yrs required, wrong domain, sub-floor comp).
+- In "casual" mode the candidate is NOT job-hunting under pressure: weight target_quality
+  heavily. A high-chance role that does not clear the trajectory bar is a skip, not a maybe.
 
 ## calibration examples (JD summary -> correct call)
 - "Backend SWE, Data Layer" at a remote enterprise co; Postgres/Elasticsearch/backend match,
@@ -188,6 +190,19 @@ No prose."""
 
 _DEEP_SYSTEM_TAIL = _DEEP_TASK
 _TIER_SCORE = {"high": 85, "med": 60, "low": 35}
+
+# Share of the overall score driven by target_quality (the rest is chance).
+# Casual = not urgent -> quality of the role dominates; the busier the search
+# mode, the more the odds of landing it matter. Override with assessor.quality_weight.
+_QUALITY_WEIGHT_BY_MODE = {"casual": 0.70, "active": 0.50, "urgent": 0.35}
+_DEFAULT_QUALITY_WEIGHT = 0.45
+
+
+def _quality_weight(cfg: Config) -> float:
+    w = cfg.assessor.quality_weight
+    if w is not None:
+        return max(0.0, min(1.0, w))
+    return _QUALITY_WEIGHT_BY_MODE.get(cfg.mode, _DEFAULT_QUALITY_WEIGHT)
 
 
 def _jd_block(title: str, company: str, location: str, jd: str, cap: int) -> str:
@@ -297,11 +312,14 @@ def _enum(d: dict, key: str, allowed: set[str]) -> str:
     return v
 
 
-def _common(d: dict) -> dict:
+def _common(d: dict, qw: float) -> dict:
+    q_s, c_s = _score(d, "score_quality"), _score(d, "score_chance")
     return {
-        "score_overall": _score(d, "score_overall"),
-        "score_chance": _score(d, "score_chance"),
-        "score_quality": _score(d, "score_quality"),
+        # re-derive overall from the same quality/chance weighting deep uses, so the
+        # triage ranking that feeds deep is already quality-led in casual mode
+        "score_overall": round(qw * q_s + (1 - qw) * c_s),
+        "score_chance": c_s,
+        "score_quality": q_s,
         "area": _enum(d, "area", _AREAS),
         "verdict": _enum(d, "verdict", _VERDICTS),
         "comp_vs_baseline": _enum(d, "comp_vs_baseline", _COMP),
@@ -327,6 +345,7 @@ def triage_batch(cfg: Config, items: list[dict]) -> dict[int, dict]:
     rows = raw.get("assessments") or raw.get("results") or []
     if not isinstance(rows, list):
         raise AssessError("triage response missing an assessments array")
+    qw = _quality_weight(cfg)
     by_n = {}
     for entry in rows:
         try:
@@ -334,7 +353,7 @@ def triage_batch(cfg: Config, items: list[dict]) -> dict[int, dict]:
         except (KeyError, TypeError, ValueError):
             continue
         if 1 <= n <= len(items):
-            c = _common(entry)
+            c = _common(entry, qw)
             c["overall"] = str(entry.get("one_liner", "")).strip()
             by_n[items[n - 1]["id"]] = c
     missing = [it["id"] for it in items if it["id"] not in by_n]
@@ -367,8 +386,9 @@ def deep_one(cfg: Config, *, title: str, company: str, location: str, descriptio
             chance = _enum(d, "chance", _LMH)
             verdict = _enum(d, "verdict", _VERDICTS)
             q_s, c_s = _TIER_SCORE[quality], _TIER_SCORE[chance]
-            # overall score: quality x chance blend, nudged by the verdict
-            overall_s = round(0.45 * q_s + 0.55 * c_s)
+            # overall score: quality x chance blend (weight from search mode), nudged by verdict
+            qw = _quality_weight(cfg)
+            overall_s = round(qw * q_s + (1 - qw) * c_s)
             overall_s += {"pursue": 6, "maybe": 0, "skip": -8}[verdict]
             return {
                 "area": area,

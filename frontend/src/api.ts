@@ -7,6 +7,7 @@ export interface AppConfig {
   resolved_window: string;
   last_run: string | null;
   max_results_per_query: number;
+  quality_weight: number | null;
 }
 
 export interface QueryGroup {

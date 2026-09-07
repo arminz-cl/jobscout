@@ -23,6 +23,14 @@ export function Info() {
             <tr><td>mode</td><td><b>{cfg?.mode ?? "…"}</b></td></tr>
             <tr><td>source</td><td>{cfg?.source ?? "…"}</td></tr>
             <tr><td>model (config)</td><td>{cfg?.model ?? "…"}</td></tr>
+            <tr>
+              <td>quality weight</td>
+              <td>
+                {cfg?.quality_weight != null
+                  ? `${cfg.quality_weight} quality / ${(1 - cfg.quality_weight).toFixed(2)} chance`
+                  : "…"}
+              </td>
+            </tr>
             <tr><td>next fetch window</td><td>{cfg?.resolved_window ?? "…"}</td></tr>
             <tr>
               <td>last run</td>
