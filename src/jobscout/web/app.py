@@ -188,6 +188,7 @@ def postings(
     verdict: str | None = None,
     assessed: bool | None = None,
     level: int | None = None,
+    has_resume: bool | None = None,
     has_description: bool | None = None,
     seen: bool | None = None,
     starred: bool | None = None,
@@ -207,9 +208,9 @@ def postings(
             raise HTTPException(400, str(e)) from e
     rows = db.list_postings(
         conn, query=query, group=group, queries=queries, run_id=run_id, company=company,
-        verdict=verdict, assessed=assessed, level=level, has_description=has_description,
-        seen=seen, starred=starred, status=status, search=search, order=order,
-        limit=limit, offset=offset,
+        verdict=verdict, assessed=assessed, level=level, has_resume=has_resume,
+        has_description=has_description, seen=seen, starred=starred, status=status,
+        search=search, order=order, limit=limit, offset=offset,
     )
     return {"count": len(rows), "results": [_row(r) for r in rows]}
 
@@ -230,6 +231,7 @@ def posting_facets():
     pending_assessment = len(db.postings_pending_assessment(conn))
     unseen = conn.execute("SELECT COUNT(*) FROM postings WHERE seen_at IS NULL").fetchone()[0]
     starred = conn.execute("SELECT COUNT(*) FROM postings WHERE starred = 1").fetchone()[0]
+    resumes_n = conn.execute("SELECT COUNT(*) FROM resumes").fetchone()[0]
     by_group = []
     for g in cfg.query_groups.values():
         qs = list(g.queries)
@@ -269,6 +271,7 @@ def posting_facets():
         "levels": {"0": total - ac["level1"] - ac["level2"], "1": ac["level1"], "2": ac["level2"]},
         "unseen": unseen,
         "starred": starred,
+        "resumes": resumes_n,
         "by_group": by_group,
         "verdicts": verdicts,
         "workplace": workplace,
@@ -362,6 +365,63 @@ def set_status(posting_id: int, body: SetStatus):
     if not db.get_posting(conn, posting_id):
         raise HTTPException(404, "no such posting")
     db.set_status(conn, posting_id, body.state, body.note)
+    return {"ok": True}
+
+
+# -- resumes --------------------------------------------------------------
+
+
+@app.post("/api/postings/{posting_id}/resume")
+def make_resume(posting_id: int):
+    from ..assess import AssessError
+    from ..resume import generate_resume
+
+    cfg = load()
+    conn = db.connect(cfg.db_path)
+    row = db.get_posting(conn, posting_id)
+    if not row:
+        raise HTTPException(404, "no such posting")
+    if not (row["description"] or "").strip():
+        from ..fetch import fetch_one_description
+
+        try:
+            fetch_one_description(conn, cfg, posting_id)
+        except Exception as e:
+            raise HTTPException(502, f"could not fetch description: {e}") from e
+    try:
+        return generate_resume(conn, cfg, posting_id)
+    except AssessError as e:
+        raise HTTPException(502, f"resume generation failed: {e}") from e
+
+
+@app.get("/api/postings/{posting_id}/resume")
+def get_posting_resume(posting_id: int):
+    conn = _conn()
+    r = db.get_resume_for_posting(conn, posting_id)
+    if not r:
+        raise HTTPException(404, "no resume for this posting")
+    return _row(r)
+
+
+@app.get("/api/resumes")
+def resumes():
+    conn = _conn()
+    return [_row(r) for r in db.list_resumes(conn)]
+
+
+@app.get("/api/resumes/{resume_id}")
+def resume_detail(resume_id: int):
+    conn = _conn()
+    r = db.get_resume(conn, resume_id)
+    if not r:
+        raise HTTPException(404, "no such resume")
+    return _row(r)
+
+
+@app.delete("/api/resumes/{resume_id}")
+def resume_delete(resume_id: int):
+    conn = _conn()
+    db.delete_resume(conn, resume_id)
     return {"ok": True}
 
 

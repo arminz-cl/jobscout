@@ -153,8 +153,13 @@ def _extract_json(text: str) -> dict:
 
 
 def _chat(ac: AssessorConfig, system: str, user: str) -> dict:
+    return _extract_json(_chat_raw(ac, system, user, json_mode=True))
+
+
+def _chat_raw(ac: AssessorConfig, system: str, user: str, *, json_mode: bool) -> str:
+    """Return the model's message content as text. json_mode adds response_format."""
     if ac.provider == "claude":
-        return _chat_claude(ac, system, user)
+        return _chat_claude_raw(ac, system, user)
 
     if not ac.base_url:
         raise AssessError("assessor.base_url is required for provider openai_compat")
@@ -170,25 +175,28 @@ def _chat(ac: AssessorConfig, system: str, user: str) -> dict:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "response_format": {"type": "json_object"},
     }
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
     url = ac.base_url.rstrip("/") + "/chat/completions"
     for attempt in range(4):
-        r = httpx.post(url, headers=headers, json=body, timeout=120.0)
+        r = httpx.post(url, headers=headers, json=body, timeout=180.0)
         if r.status_code == 429:
             wait = float(r.headers.get("retry-after", 0)) or min(15 * (attempt + 1), 60)
             time.sleep(wait)
             continue
         if r.status_code == 413:
-            raise AssessError(
-                "request too large for this tier — lower assessor.batch_size / triage_jd_chars"
-            )
+            raise AssessError("request too large for this tier — lower batch_size / triage_jd_chars")
         r.raise_for_status()
-        return _extract_json(r.json()["choices"][0]["message"]["content"])
+        return r.json()["choices"][0]["message"]["content"]
     raise AssessError("rate limited after retries — wait and retry")
 
 
 def _chat_claude(ac: AssessorConfig, system: str, user: str) -> dict:
+    return _extract_json(_chat_claude_raw(ac, system, user))
+
+
+def _chat_claude_raw(ac: AssessorConfig, system: str, user: str) -> str:
     try:
         import anthropic
     except ImportError as e:
@@ -198,11 +206,11 @@ def _chat_claude(ac: AssessorConfig, system: str, user: str) -> dict:
     client = anthropic.Anthropic(api_key=ac.api_key)
     msg = client.messages.create(
         model=ac.model,
-        max_tokens=2048,
+        max_tokens=4096,
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user + "\n\nReturn only the JSON object."}],
+        messages=[{"role": "user", "content": user}],
     )
-    return _extract_json("".join(b.text for b in msg.content if b.type == "text"))
+    return "".join(b.text for b in msg.content if b.type == "text")
 
 
 # -- validation --------------------------------------------------------

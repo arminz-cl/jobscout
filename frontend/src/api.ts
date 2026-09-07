@@ -65,6 +65,7 @@ export interface Facets {
   levels: Record<string, number>;   // "0" | "1" | "2" -> count
   unseen: number;
   starred: number;
+  resumes: number;
   by_group: {
     name: string;
     title: string;
@@ -139,6 +140,7 @@ export interface Posting {
   keep_de_titles: number | null;
   assessed_model: string | null;
   assessed_at: string | null;
+  resume_id: number | null;
   status_state: string | null;
   status_note: string | null;
 }
@@ -204,4 +206,36 @@ export const api = {
   fetchDescription: (id: number) =>
     j<Posting>(`/postings/${id}/description`, { method: "POST" }),
   assess: (id: number) => j<Posting>(`/postings/${id}/assess`, { method: "POST" }),
+
+  makeResume: (postingId: number) =>
+    j<Resume>(`/postings/${postingId}/resume`, { method: "POST" }),
+  postingResume: (postingId: number) => j<Resume>(`/postings/${postingId}/resume`),
+  resumes: () => j<ResumeListItem[]>("/resumes"),
+  resume: (id: number) => j<Resume>(`/resumes/${id}`),
+  deleteResume: (id: number) => j<{ ok: boolean }>(`/resumes/${id}`, { method: "DELETE" }),
 };
+
+export interface Resume {
+  id: number;
+  posting_id: number;
+  base: string | null;
+  content: string;
+  notes: string | null;
+  model: string | null;
+  created_at: string;
+  title?: string;
+  company?: string;
+  url?: string;
+}
+
+export interface ResumeListItem {
+  id: number;
+  posting_id: number;
+  base: string | null;
+  model: string | null;
+  created_at: string;
+  title: string;
+  company: string;
+  verdict: string | null;
+  score_overall: number | null;
+}

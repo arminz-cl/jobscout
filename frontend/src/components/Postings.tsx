@@ -35,6 +35,7 @@ export function Postings({
   const [company, setCompany] = useState(initialCompany ?? "");
   const [unseenOnly, setUnseenOnly] = useState(false);
   const [starredOnly, setStarredOnly] = useState(false);
+  const [resumeOnly, setResumeOnly] = useState(false);
   const [hasDesc, setHasDesc] = useState<Tri>("any");
   const [level, setLevel] = useState<string>("");   // "" | "0" | "1" | "2"
   const [order, setOrder] = useState(mode === "assessed" ? "score" : "first_seen_at");
@@ -56,6 +57,7 @@ export function Postings({
           level: level === "" ? undefined : Number(level),
           seen: unseenOnly ? false : undefined,
           starred: starredOnly ? true : undefined,
+          has_resume: resumeOnly ? true : undefined,
           has_description: triParam(hasDesc),
           order,
           limit: 400,
@@ -72,7 +74,7 @@ export function Postings({
     } finally {
       setLoading(false);
     }
-  }, [search, verdict, group, company, runId, unseenOnly, starredOnly, hasDesc, level, order, mode]);
+  }, [search, verdict, group, company, runId, unseenOnly, starredOnly, resumeOnly, hasDesc, level, order, mode]);
 
   useEffect(() => {
     if (initialCompany != null) setCompany(initialCompany);
@@ -141,6 +143,13 @@ export function Postings({
           onClick={() => setStarredOnly((v) => !v)}
         >
           ★ starred{facets ? ` (${facets.starred})` : ""}
+        </button>
+        <button
+          className={resumeOnly ? "primary" : ""}
+          style={{ fontSize: 12, padding: "3px 10px" }}
+          onClick={() => setResumeOnly((v) => !v)}
+        >
+          has resume{facets ? ` (${facets.resumes})` : ""}
         </button>
         <button
           className={hasDesc !== "any" ? "primary" : ""}
@@ -221,6 +230,7 @@ export function Postings({
               {mode === "assessed" && <th>Model</th>}
               <th>Posted</th>
               <th title="has description">JD</th>
+              <th title="resume generated">CV</th>
               <th>Run</th>
             </tr>
           </thead>
@@ -298,6 +308,9 @@ export function Postings({
                 <td className="muted">{p.posted_at ?? "—"}</td>
                 <td style={{ textAlign: "center" }} title={p.description ? "has JD" : "no JD"}>
                   {p.description ? "✓" : ""}
+                </td>
+                <td style={{ textAlign: "center" }} title={p.resume_id ? "resume generated" : ""}>
+                  {p.resume_id ? "✓" : ""}
                 </td>
                 <td className="muted">{p.first_run_id ? `#${p.first_run_id}` : "—"}</td>
               </tr>

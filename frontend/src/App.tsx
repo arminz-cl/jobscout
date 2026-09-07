@@ -4,9 +4,10 @@ import { Dashboard } from "./components/Dashboard";
 import { Postings } from "./components/Postings";
 import { Runs } from "./components/Runs";
 import { Companies } from "./components/Companies";
+import { Resumes } from "./components/Resumes";
 
-type Tab = "dashboard" | "runs" | "companies" | "postings" | "assessments";
-const TABS: Tab[] = ["dashboard", "runs", "companies", "postings", "assessments"];
+type Tab = "dashboard" | "runs" | "companies" | "postings" | "assessments" | "resumes";
+const TABS: Tab[] = ["dashboard", "runs", "companies", "postings", "assessments", "resumes"];
 const hashTab = (): Tab => {
   const h = window.location.hash.replace("#", "") as Tab;
   return TABS.includes(h) ? h : "dashboard";
@@ -82,6 +83,7 @@ export function App() {
           />
         )}
         {tab === "assessments" && <Postings mode="assessed" />}
+        {tab === "resumes" && <Resumes />}
       </main>
     </>
   );

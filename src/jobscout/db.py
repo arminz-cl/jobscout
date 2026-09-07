@@ -68,6 +68,17 @@ CREATE TABLE IF NOT EXISTS companies (
     updated_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS resumes (
+    id         INTEGER PRIMARY KEY,
+    posting_id INTEGER NOT NULL REFERENCES postings(id),
+    base       TEXT,                          -- which base resume (A / B) was tailored
+    content    TEXT NOT NULL,                 -- the tailored resume, markdown
+    notes      TEXT,                          -- tailoring notes + verify-before-sending flags
+    model      TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (posting_id)
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     id               INTEGER PRIMARY KEY,
     source           TEXT NOT NULL,
@@ -163,6 +174,52 @@ def postings_missing_description(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM postings WHERE description IS NULL OR description = '' ORDER BY id"
     ).fetchall()
+
+
+# -- resumes -------------------------------------------------------------
+
+
+def store_resume(
+    conn: sqlite3.Connection, posting_id: int, *, base: str, content: str, notes: str, model: str
+) -> int:
+    cur = conn.execute(
+        "INSERT INTO resumes (posting_id, base, content, notes, model, created_at) "
+        "VALUES (?,?,?,?,?,?) "
+        "ON CONFLICT(posting_id) DO UPDATE SET base=excluded.base, content=excluded.content, "
+        "notes=excluded.notes, model=excluded.model, created_at=excluded.created_at",
+        (posting_id, base, content, notes, model, now_iso()),
+    )
+    conn.commit()
+    return cur.lastrowid or conn.execute(
+        "SELECT id FROM resumes WHERE posting_id = ?", (posting_id,)
+    ).fetchone()[0]
+
+
+def get_resume_for_posting(conn: sqlite3.Connection, posting_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM resumes WHERE posting_id = ?", (posting_id,)).fetchone()
+
+
+def get_resume(conn: sqlite3.Connection, resume_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT r.*, p.title, p.company, p.url FROM resumes r JOIN postings p ON p.id = r.posting_id "
+        "WHERE r.id = ?",
+        (resume_id,),
+    ).fetchone()
+
+
+def list_resumes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT r.id, r.posting_id, r.base, r.model, r.created_at, "
+        "p.title, p.company, a.verdict, a.score_overall "
+        "FROM resumes r JOIN postings p ON p.id = r.posting_id "
+        "LEFT JOIN assessments a ON a.posting_id = p.id "
+        "ORDER BY r.created_at DESC"
+    ).fetchall()
+
+
+def delete_resume(conn: sqlite3.Connection, resume_id: int) -> None:
+    conn.execute("DELETE FROM resumes WHERE id = ?", (resume_id,))
+    conn.commit()
 
 
 # -- assessments --------------------------------------------------------------
@@ -276,10 +333,12 @@ SELECT p.*,
        a.area, a.area_reason, a.target_quality, a.chance, a.verdict, a.overall,
        a.gaps_hit, a.comp_vs_baseline, a.keep_de_titles, a.model AS assessed_model,
        a.assessed_at,
-       s.state AS status_state, s.note AS status_note
+       s.state AS status_state, s.note AS status_note,
+       r.id AS resume_id
 FROM postings p
 LEFT JOIN assessments a ON a.posting_id = p.id
 LEFT JOIN status s ON s.posting_id = p.id
+LEFT JOIN resumes r ON r.posting_id = p.id
 """
 
 
@@ -294,6 +353,7 @@ def list_postings(
     verdict: str | None = None,
     assessed: bool | None = None,
     level: int | None = None,             # 0 none · 1 triaged · 2 deep
+    has_resume: bool | None = None,
     has_description: bool | None = None,
     seen: bool | None = None,
     starred: bool | None = None,
@@ -338,6 +398,10 @@ def list_postings(
         where.append("a.method = 'batch'")
     elif level == 2:
         where.append("a.method = 'single'")
+    if has_resume is True:
+        where.append("r.id IS NOT NULL")
+    elif has_resume is False:
+        where.append("r.id IS NULL")
     if has_description is True:
         where.append("p.description IS NOT NULL AND p.description != ''")
     elif has_description is False:

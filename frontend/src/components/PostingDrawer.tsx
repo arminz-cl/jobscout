@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, AREA_NAMES, Posting } from "../api";
+import { api, AREA_NAMES, Posting, Resume } from "../api";
 
 const STATES = ["new", "shortlisted", "applied", "passed", "ignored"];
 
@@ -63,6 +63,30 @@ export function PostingDrawer({
       setErr(e.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const [resume, setResume] = useState<Resume | null>(null);
+  const [showResume, setShowResume] = useState(false);
+  const [resumeBusy, setResumeBusy] = useState(false);
+
+  useEffect(() => {
+    setResume(null);
+    setShowResume(false);
+    api.postingResume(id).then(setResume).catch(() => {});
+  }, [id]);
+
+  const genResume = async () => {
+    setResumeBusy(true);
+    setErr(null);
+    try {
+      setResume(await api.makeResume(id));
+      setShowResume(true);
+      onChanged();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setResumeBusy(false);
     }
   };
 
@@ -195,6 +219,60 @@ export function PostingDrawer({
                     ? "re-assess (deep)"
                     : "deep-assess this one"}
               </button>
+            </div>
+
+            <div className="panel" style={{ background: "var(--panel-2)", marginTop: 14 }}>
+              <h2>Resume {resume ? `· base ${resume.base ?? "?"}` : ""}</h2>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={genResume} disabled={resumeBusy || !p.description}>
+                  {resumeBusy ? "generating…" : resume ? "regenerate" : "generate resume"}
+                </button>
+                {resume && (
+                  <button onClick={() => setShowResume((s) => !s)}>
+                    {showResume ? "hide" : "view resume"}
+                  </button>
+                )}
+                {resume && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(resume.content);
+                    }}
+                  >
+                    copy markdown
+                  </button>
+                )}
+              </div>
+              {resume && (
+                <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                  <span className="pill">{resume.model ?? "?"}</span> · {resume.created_at}
+                </div>
+              )}
+              {resume && showResume && (
+                <>
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      fontSize: 12,
+                      lineHeight: 1.6,
+                      borderTop: "1px solid var(--border)",
+                      marginTop: 10,
+                      paddingTop: 10,
+                    }}
+                  >
+                    {resume.content}
+                  </pre>
+                  {resume.notes && (
+                    <details style={{ marginTop: 6 }}>
+                      <summary className="muted" style={{ cursor: "pointer" }}>
+                        tailoring notes &amp; verify-before-sending
+                      </summary>
+                      <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, lineHeight: 1.6 }}>
+                        {resume.notes}
+                      </pre>
+                    </details>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="jd">
