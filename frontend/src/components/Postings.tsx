@@ -175,6 +175,14 @@ export function Postings({
 
       {err && <div className="error">{err}</div>}
 
+      <div className="muted" style={{ fontSize: 12, margin: "0 0 10px", lineHeight: 1.7 }}>
+        <b>Score</b> (0–100 each): <b>overall</b> fit · <b>chance</b> of landing it (profile vs. the
+        JD) · <b>quality</b> of the role if landed (the trajectory bar).
+        &nbsp;·&nbsp; <b>Assessed</b>: <span style={{ color: "var(--maybe)" }}>triaged</span> = quick
+        batch score · <span style={{ color: "var(--pursue)" }}>deep</span> = full rubric with
+        reasoning &amp; gaps.
+      </div>
+
       {mode === "assessed" && count === 0 && !loading && (
         <div className="empty">
           No assessed postings match. Run <b>Triage</b> on the Dashboard to score them.
