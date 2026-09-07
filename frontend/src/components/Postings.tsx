@@ -9,7 +9,11 @@ const triParam = (t: Tri): boolean | undefined => (t === "any" ? undefined : t =
 // assessment level from the stored method
 const levelOf = (p: Posting): 0 | 1 | 2 =>
   p.assess_method === "single" ? 2 : p.assess_method === "batch" ? 1 : 0;
-const LEVEL_LABEL = ["—", "triaged", "deep"];
+const LEVEL = [
+  { label: "not assessed", short: "none", color: "var(--muted)" },
+  { label: "triaged (batch score)", short: "triaged", color: "var(--maybe)" },
+  { label: "deep (full rubric)", short: "deep", color: "var(--pursue)" },
+] as const;
 
 export function Postings({
   mode,
@@ -111,10 +115,10 @@ export function Postings({
           ))}
         </select>
         <select value={level} onChange={(e) => setLevel(e.target.value)} title="assessment level">
-          <option value="">any level</option>
-          <option value="0">0 · not assessed</option>
-          <option value="1">1 · triaged</option>
-          <option value="2">2 · deep</option>
+          <option value="">any assessed state</option>
+          <option value="0">not assessed</option>
+          <option value="1">triaged only</option>
+          <option value="2">deep-assessed</option>
         </select>
         {mode === "assessed" && (
           <select value={verdict} onChange={(e) => setVerdict(e.target.value)}>
@@ -185,7 +189,7 @@ export function Postings({
               <th>Role</th>
               <th>Intent</th>
               <th>Location</th>
-              <th title="0 not assessed · 1 triaged · 2 deep">Lvl</th>
+              <th>Assessed</th>
               <th title="overall / chance / quality (0–100)">Score</th>
               <th>Verdict</th>
               {mode === "assessed" && <th>Area</th>}
@@ -235,15 +239,10 @@ export function Postings({
                 <td>
                   <span
                     className="pill"
-                    title={LEVEL_LABEL[levelOf(p)]}
-                    style={{
-                      color:
-                        levelOf(p) === 2 ? "var(--pursue)"
-                        : levelOf(p) === 1 ? "var(--maybe)"
-                        : "var(--muted)",
-                    }}
+                    title={`level ${levelOf(p)} — ${LEVEL[levelOf(p)].label}`}
+                    style={{ color: LEVEL[levelOf(p)].color }}
                   >
-                    {levelOf(p)}
+                    {LEVEL[levelOf(p)].short}
                   </span>
                 </td>
                 <td style={{ fontVariantNumeric: "tabular-nums", fontSize: 12 }}>
