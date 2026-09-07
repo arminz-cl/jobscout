@@ -1,7 +1,8 @@
 # The assessor — design (for review)
 
-Status: **not built.** This is the plan for `src/jobscout/assess.py` (Phase 3) and the eval
-harness (Phase 4). Review and mark it up before I implement.
+Status: **mostly built** — `src/jobscout/assess.py` runs the two-tier flow (batch triage +
+deep single-JD). Still to do: the embedding pre-rank (below), the eval harness (Phase 4), and
+folding a condensed skills summary into the triage prompt.
 
 ---
 
@@ -157,6 +158,29 @@ assessments(
   switching models.
 
 ---
+
+## Embedding pre-rank (level 0.5 — TODO)
+
+Before any LLM touches a posting, rank all of them by semantic similarity to the profile. Local,
+free, no rate limits — a full ranking of ~700 postings in ~2 seconds.
+
+```
+profile_vec = embed(target-areas.md + skills summary)          # once
+jd_vec[i]   = embed(title + description)                        # once per posting, cached (blob)
+score[i]    = cosine(profile_vec, jd_vec[i])                    # 0..1
+```
+
+- **Model:** `sentence-transformers` `all-MiniLM-L6-v2` (384-dim, CPU, ~90 MB). No API.
+- **Storage:** `postings.embed_score REAL` + `postings.embed_vec BLOB` (cache the vector).
+- **New run phase** `embed` (or folded into fetch): embeds any posting missing a vector.
+- **Then:** LLM triage runs on the **top N by `embed_score`**, not all 544 — keeps the paid/
+  quota-limited passes focused. Deep-assess still ranks by the LLM `score_overall`.
+- **Config:** `assessor.embed_model`, `assessor.embed_top_n` (how many go to LLM triage).
+- **UI:** a fourth score column (`embed`), sortable; a run button "Embed all".
+
+Why it matters: today a free-tier LLM token quota (Groq: 200k tokens/day for gpt-oss-120b) caps
+triage at ~150 postings/day. Embeddings have no such wall — you always have a full ranking, and
+the LLM only spends budget on the plausible top slice.
 
 ## Eval harness (Phase 4)
 

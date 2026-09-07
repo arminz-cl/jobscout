@@ -175,7 +175,8 @@ its own detailed plan file** (e.g. `ASSESSOR.md`), which this file links to.
 | 1 | Skeleton, `config.yaml`, SQLite schema, `Source` interface, `linkedin_guest.fetch()` | ✅ done |
 | 2 | `fetch_description()` (N+1); dedupe/upsert; all query groups; polite delay; `runs` tracking | ✅ done |
 | — | *(ahead of plan)* local web app — FastAPI + React SPA: Dashboard / Runs / Companies / Postings, per-group runs, cards/descriptions phase split, filters, star/seen/status | ✅ done |
-| 3 | **The assessor** — `assess.py`: profile-pack builder + Claude call + schema + store → **see `ASSESSOR.md`** | ⏳ current |
+| 3 | **The assessor** — `assess.py`: two-tier (batch triage 0–100 + deep single-JD), pluggable provider → **see `ASSESSOR.md`** | ⏳ mostly done |
+| 3.5 | **Embedding pre-rank** — local `sentence-transformers`, one vector per JD, cosine-similarity to the profile → rank all postings for ~free; LLM triage then runs only on the top N. Sidesteps LLM token quotas. | next |
 | 4 | `eval.py` against the labeled JDs; tune the prompt until it clears the bar; commit `eval-results.md` | next |
 | 5 | `report.py` → daily markdown; wire `status` overrides into the report | next |
 | 6 | `jobscout run` end-to-end (fetch → assess → report); `jsearch` adapter as the cloud-safe fallback | next |
