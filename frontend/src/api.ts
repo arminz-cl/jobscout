@@ -62,6 +62,7 @@ export interface Facets {
   without_description: number;
   assessed: number;
   pending_assessment: number;
+  levels: Record<string, number>;   // "0" | "1" | "2" -> count
   unseen: number;
   starred: number;
   by_group: {

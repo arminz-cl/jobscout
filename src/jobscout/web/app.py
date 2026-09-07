@@ -258,12 +258,15 @@ def posting_facets():
             "SELECT workplace_type, COUNT(*) n FROM postings GROUP BY workplace_type"
         )
     }
+    ac = db.assessment_counts(conn)
     return {
         "total": total,
         "with_description": with_desc,
         "without_description": total - with_desc,
         "assessed": assessed,
         "pending_assessment": pending_assessment,
+        # counts match the `level=` filter: 0 = no assessment row at all
+        "levels": {"0": total - ac["level1"] - ac["level2"], "1": ac["level1"], "2": ac["level2"]},
         "unseen": unseen,
         "starred": starred,
         "by_group": by_group,
