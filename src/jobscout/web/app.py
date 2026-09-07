@@ -123,7 +123,7 @@ def get_run(run_id: int):
 @app.get("/api/runner")
 def runner_state():
     cur = runner.current()
-    act, act_at = runner.activity()
+    act, act_at, wait_remaining = runner.activity()
     return {
         "busy": runner.is_busy(),
         "current_run_id": cur.run_id if cur else None,
@@ -132,6 +132,7 @@ def runner_state():
         "error": cur.error if cur else None,
         "activity": act,
         "activity_age": round(time.time() - act_at, 1) if act_at else None,
+        "wait_remaining": wait_remaining,
     }
 
 

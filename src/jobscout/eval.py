@@ -79,8 +79,10 @@ def run_eval(cfg: Config, *, limit: int | None = None, verbose: bool = True) -> 
         a_ok = got["area"] in human_areas
         area_hits += a_ok
 
-        q_ok = _score_tier(got["score_quality"]) == _TIER.get(lab["target_quality"].strip(), "?")
-        c_ok = _score_tier(got["score_chance"]) == _TIER.get(lab["chance"].strip(), "?")
+        got_q = got.get("target_quality") or _score_tier(got["score_quality"])
+        got_c = got.get("chance") or _score_tier(got["score_chance"])
+        q_ok = got_q == _TIER.get(lab["target_quality"].strip(), "?")
+        c_ok = got_c == _TIER.get(lab["chance"].strip(), "?")
         quality_hits += q_ok
         chance_hits += c_ok
 
@@ -88,9 +90,7 @@ def run_eval(cfg: Config, *, limit: int | None = None, verbose: bool = True) -> 
             {
                 "file": lab["file"],
                 "human": f"{lab['area']:4} q:{lab['target_quality']:8} c:{lab['chance']:9} {human_v}",
-                "model": f"{got['area']:4} q:{_score_tier(got['score_quality'])} "
-                f"({got['score_quality']:>3}) c:{_score_tier(got['score_chance'])} "
-                f"({got['score_chance']:>3}) {got_v}",
+                "model": f"{got['area']:4} q:{got_q:5} c:{got_c:5} {got_v}",
                 "v_ok": v_ok, "a_ok": a_ok, "q_ok": q_ok, "c_ok": c_ok,
                 "overall": got["overall"],
             }

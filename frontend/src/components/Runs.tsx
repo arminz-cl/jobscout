@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, groupsLabel, Run, windowLabel } from "../api";
+import { api, groupsLabel, Run, RunnerState, windowLabel } from "../api";
 
 const statusColor = (s: string | null) =>
   s === "ok"
@@ -32,12 +32,15 @@ function duration(run: Run): string {
 
 export function Runs({ onOpenRun }: { onOpenRun: (id: number) => void }) {
   const [runs, setRuns] = useState<Run[]>([]);
+  const [rs, setRs] = useState<RunnerState | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const timer = useRef<number>();
 
   const refresh = useCallback(async () => {
     try {
-      setRuns(await api.runs(50));
+      const [r, s] = await Promise.all([api.runs(50), api.runner().catch(() => null)]);
+      setRuns(r);
+      setRs(s);
       setErr(null);
     } catch (e: any) {
       setErr(e.message);
@@ -111,7 +114,16 @@ export function Runs({ onOpenRun }: { onOpenRun: (id: number) => void }) {
                     <div style={{ width: `${progressPct(r)}%` }} />
                   </div>
                 )}
-                {r.note && (
+                {r.status === "running" && rs?.current_run_id === r.id && (
+                  <div className="muted" style={{ fontSize: 11 }}>
+                    {(rs.wait_remaining ?? 0) > 0 ? (
+                      <span style={{ color: "var(--maybe)" }}>⏳ retry in {rs.wait_remaining}s</span>
+                    ) : (
+                      rs.activity
+                    )}
+                  </div>
+                )}
+                {r.note && (r.status !== "running" || rs?.current_run_id !== r.id) && (
                   <div className="muted" style={{ fontSize: 11 }}>
                     {r.note}
                   </div>

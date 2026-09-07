@@ -44,6 +44,7 @@ export interface RunnerState {
   error: string | null;
   activity: string;
   activity_age: number | null;
+  wait_remaining: number;   // seconds left in a 429 backoff (0 = not waiting)
 }
 
 export interface AssessorInfo {

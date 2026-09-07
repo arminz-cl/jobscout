@@ -270,12 +270,20 @@ function RunList({
                   ■ stop
                 </button>
               )}
+              {running && runner?.current_run_id === run.id && (runner.wait_remaining ?? 0) > 0 && (
+                <span className="pill" style={{ color: "var(--maybe)" }}>
+                  ⏳ retry in {runner.wait_remaining}s
+                </span>
+              )}
               <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>
                 {new Date(run.started_at).toLocaleTimeString()}
               </span>
             </div>
             {running && (
               <div className="progress"><div style={{ width: `${pct}%` }} /></div>
+            )}
+            {running && runner?.current_run_id === run.id && runner.activity && (
+              <div className="muted" style={{ fontSize: 11 }}>{runner.activity}</div>
             )}
             <div className="muted" style={{ fontSize: 12 }}>
               {run.kind === "triage"

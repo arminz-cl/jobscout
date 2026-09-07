@@ -7,6 +7,7 @@ cancel flag (threads can't be force-killed, so run_fetch checks it between steps
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 import traceback
@@ -31,16 +32,22 @@ _lock = threading.Lock()
 _current: JobState | None = None
 _activity = "idle"            # fine-grained live status for the UI
 _activity_at = 0.0
+_wait_until = 0.0             # unix ts the current backoff sleep ends (0 = not waiting)
+
+_WAIT_RE = re.compile(r"waiting (\d+)s")
 
 
 def _set_activity(msg: str) -> None:
-    global _activity, _activity_at
+    global _activity, _activity_at, _wait_until
     _activity = msg
     _activity_at = time.time()
+    m = _WAIT_RE.search(msg)
+    _wait_until = time.time() + int(m.group(1)) if m else 0.0
 
 
-def activity() -> tuple[str, float]:
-    return _activity, _activity_at
+def activity() -> tuple[str, float, int]:
+    remaining = max(0, round(_wait_until - time.time())) if _wait_until else 0
+    return _activity, _activity_at, remaining
 
 
 def current() -> JobState | None:

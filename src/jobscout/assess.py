@@ -131,17 +131,63 @@ _TRIAGE_SYSTEM_TAIL = (
     '  "one_liner":  string  — one clause on the fit\n}\nNo prose.'
 )
 
-_DEEP_SYSTEM_TAIL = (
-    "\n\n# TASK\n\nAssess the one posting below. Return ONLY a JSON object:\n{\n"
-    + _SCORE_KEYS + ",\n"
-    '  "area_reason":    string   — one clause: why this area, judging the work,\n'
-    '  "target_quality": "high" | "med" | "low",\n'
-    '  "chance":         "high" | "med" | "low",\n'
-    '  "overall":        string   — one line capturing the reasoning,\n'
-    '  "gaps_hit":       string[] — JD requirements the candidate lacks,\n'
-    '  "keep_de_titles": boolean  — true if the JD values Data-Engineer experience positively\n'
-    "}\nNo prose."
-)
+_DEEP_TASK = """\
+
+# TASK
+
+Assess the one posting below. Work in tiers, not fine-grained numbers.
+
+## target_quality — how good the role is IF landed (the trajectory bar)
+- high : SWE / AI-engineer title (or unambiguously SWE-on-data); real systems; genuine scale
+        or complexity; level + label point up.
+- med  : solid but with a compromise — internal tooling not product, unglamorous domain, so-so
+        level, or a DE title that is really engineering.
+- low  : data-mover DE title; below comp baseline; outside the engineering org; product pivot
+        away from the goal; no trajectory fix.
+
+## chance — odds of landing it, given the candidate's profile + gaps
+- high : meets the stated bar; few/no hard gaps; strong keyword overlap.
+- med  : meets most; 1-2 real gaps that prep or a portfolio project can close; decent overlap.
+- low  : misses a hard requirement (years, a core skill) or several gaps; still plausible only
+        with a strong tailored pitch or a warm intro.
+
+## verdict
+- pursue = area A or B AND target_quality >= med AND chance is at least low-but-real.
+- area C -> pursue only if target_quality is high and it is customer-facing.
+- area D -> skip unless the work is genuinely A/B in disguise.
+- comp clearly below baseline AND no trajectory fix -> skip regardless.
+- maybe = borderline on one axis.
+- skip = fails the above, or a hard blocker (10+ yrs required, wrong domain, sub-floor comp).
+
+## calibration examples (JD summary -> correct call)
+- "Backend SWE, Data Layer" at a remote enterprise co; Postgres/Elasticsearch/backend match,
+   good comp, SWE title -> area A, quality high, chance med, PURSUE. Best odds-to-quality.
+- "Senior/Staff Data Platform Engineer"; Spark-on-K8s / Flink / Delta / Terraform; the
+   platform-infra bar is real and the candidate has IaC/K8s gaps -> area A, quality high,
+   chance low, PURSUE. A stretch worth taking.
+- "Data Engineer" at a big marketplace; Java/Scala/Flink/Kafka/Databricks all required and
+   unheld; DE title does not fix the label -> area D/A, quality med, chance med, MAYBE.
+- "Applied AI Engineer, Business Solutions"; comp well below the baseline; sits in Revenue Ops
+   not Engineering -> area B, quality low, chance med, SKIP. Trajectory red flag.
+- "Senior Applied AI Engineer, Wealth"; requires 10+ yrs AI/ML + financial-services + a
+   specific agent stack -> area B, quality med, chance very-low, SKIP. Out of range.
+
+Return ONLY a JSON object:
+{
+  "area":            "A" | "B" | "C" | "D",
+  "area_reason":     string   — one clause: why this area, judging the work not the title,
+  "target_quality":  "high" | "med" | "low",
+  "chance":          "high" | "med" | "low",
+  "verdict":         "pursue" | "maybe" | "skip",
+  "comp_vs_baseline":"above" | "within" | "below" | "unknown",
+  "overall":         string   — one line, specific to THIS role (name the match and the gap),
+  "gaps_hit":        string[] — JD requirements the candidate lacks,
+  "keep_de_titles":  boolean  — true if the JD values Data-Engineer experience positively
+}
+No prose."""
+
+_DEEP_SYSTEM_TAIL = _DEEP_TASK
+_TIER_SCORE = {"high": 85, "med": 60, "low": 35}
 
 
 def _jd_block(title: str, company: str, location: str, jd: str, cap: int) -> str:
@@ -300,24 +346,41 @@ def triage_batch(cfg: Config, items: list[dict]) -> dict[int, dict]:
 _JD_MAX = 9000
 
 
-def deep_one(cfg: Config, *, title: str, company: str, location: str, description: str) -> dict:
+def deep_one(cfg: Config, *, title: str, company: str, location: str, description: str,
+             company_rating: int | None = None) -> dict:
     ac = cfg.assessor
     system = _base_system(cfg) + _DEEP_SYSTEM_TAIL
-    user = "### POSTING\n" + _jd_block(title, company, location, description, _JD_MAX)
+    ctx = f"### POSTING\nTitle: {title}\nCompany: {company}"
+    if company_rating:
+        ctx += f"\nEmployer tech/prestige rating (manual, 1-5, higher is a stronger eng org): {company_rating}"
+    ctx += f"\nLocation: {location}\n\n{description.strip()[:_JD_MAX]}"
+    user = ctx
     last = None
     for _ in range(2):
         try:
             d = _chat(ac, system, user)
-            out = _common(d)
-            out.update(
-                area_reason=str(d.get("area_reason", "")).strip(),
-                target_quality=_enum(d, "target_quality", _LMH),
-                chance=_enum(d, "chance", _LMH),
-                overall=str(d.get("overall", "")).strip(),
-                gaps_hit=[str(g) for g in (d.get("gaps_hit") or [])],
-                keep_de_titles=bool(d.get("keep_de_titles", False)),
-            )
-            return out
+            area = _enum(d, "area", _AREAS)
+            quality = _enum(d, "target_quality", _LMH)
+            chance = _enum(d, "chance", _LMH)
+            verdict = _enum(d, "verdict", _VERDICTS)
+            q_s, c_s = _TIER_SCORE[quality], _TIER_SCORE[chance]
+            # overall score: quality x chance blend, nudged by the verdict
+            overall_s = round(0.45 * q_s + 0.55 * c_s)
+            overall_s += {"pursue": 6, "maybe": 0, "skip": -8}[verdict]
+            return {
+                "area": area,
+                "area_reason": str(d.get("area_reason", "")).strip(),
+                "target_quality": quality,
+                "chance": chance,
+                "verdict": verdict,
+                "comp_vs_baseline": _enum(d, "comp_vs_baseline", _COMP),
+                "overall": str(d.get("overall", "")).strip(),
+                "gaps_hit": [str(g) for g in (d.get("gaps_hit") or [])],
+                "keep_de_titles": bool(d.get("keep_de_titles", False)),
+                "score_quality": q_s,
+                "score_chance": c_s,
+                "score_overall": max(0, min(100, overall_s)),
+            }
         except (AssessError, json.JSONDecodeError, KeyError) as e:
             last = e
             user += f"\n\nYour previous response was invalid ({e}). Return ONLY valid JSON."
@@ -413,12 +476,16 @@ def deep_top(
 
 
 def _deep_store(conn, cfg, row) -> Assessment:
+    crow = conn.execute(
+        "SELECT rating FROM companies WHERE name = ?", (row["company"],)
+    ).fetchone()
     v = deep_one(
         cfg,
         title=row["title"] or "",
         company=row["company"] or "",
         location=row["location"] or "",
         description=row["description"] or "",
+        company_rating=(crow["rating"] if crow and crow["rating"] else None),
     )
     a = Assessment(posting_id=row["id"], method="single", model=cfg.assessor.model_tag, **v)
     db.store_assessment(conn, a)
