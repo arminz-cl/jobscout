@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, AppConfig, RunnerState, seedGroupTitles, windowLabel } from "./api";
+import { api, RunnerState, seedGroupTitles } from "./api";
 import { Dashboard } from "./components/Dashboard";
 import { Postings } from "./components/Postings";
 import { Runs } from "./components/Runs";
@@ -20,7 +20,6 @@ export function App() {
     window.location.hash = t;
     setTabState(t);
   };
-  const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [runFilter, setRunFilter] = useState<number | null>(null);
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
@@ -28,8 +27,7 @@ export function App() {
   const poll = useRef<number>();
 
   useEffect(() => {
-    api.config().then(setCfg).catch((e) => setErr(String(e.message)));
-    api.queryGroups().then(seedGroupTitles).catch(() => {});
+    api.queryGroups().then(seedGroupTitles).catch(() => setErr("failed to load"));
     const tick = () => api.runner().then(setRs).catch(() => {});
     tick();
     poll.current = window.setInterval(tick, 2500);
@@ -51,12 +49,6 @@ export function App() {
     <>
       <header className="topbar">
         <span className="brand">jobscout</span>
-        {cfg && (
-          <span className="meta">
-            mode <b>{cfg.mode}</b> &nbsp;·&nbsp; {cfg.source} &nbsp;·&nbsp; {cfg.model} &nbsp;·&nbsp;
-            next window <b>{windowLabel(cfg.resolved_window)}</b>
-          </span>
-        )}
         <ActivityPill rs={rs} />
         <nav className="tabs">
           {TABS.map((t) => (
