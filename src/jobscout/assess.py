@@ -235,6 +235,9 @@ def _chat_raw(ac: AssessorConfig, system: str, user: str, *, json_mode: bool) ->
             {"role": "user", "content": user},
         ],
     }
+    if "gpt-oss" in ac.model or "deepseek" in ac.model or "qwen" in ac.model:
+        # reasoning models: minimal thinking — assessment is structured judgement, not a puzzle
+        body["reasoning_effort"] = "low"
     if json_mode:
         body["response_format"] = {"type": "json_object"}
     url = ac.base_url.rstrip("/") + "/chat/completions"

@@ -44,7 +44,14 @@ def _load_labels(eval_dir: Path) -> list[dict]:
     return rows
 
 
-def run_eval(cfg: Config, *, limit: int | None = None, verbose: bool = True) -> dict:
+def run_eval(
+    cfg: Config,
+    *,
+    limit: int | None = None,
+    verbose: bool = True,
+    progress=None,
+    cancel=None,
+) -> dict:
     labels = _load_labels(cfg.eval_dir)
     if limit:
         labels = labels[:limit]
@@ -54,7 +61,12 @@ def run_eval(cfg: Config, *, limit: int | None = None, verbose: bool = True) -> 
     verdict_hits = area_hits = quality_hits = chance_hits = 0
     flips = 0  # pursue<->skip
 
-    for lab in labels:
+    for done, lab in enumerate(labels):
+        if cancel and cancel.is_set():
+            break
+        if progress:
+            acc = verdict_hits / done if done else 0
+            progress(done, len(labels), f"eval {done}/{len(labels)} · verdict {acc:.0%}")
         try:
             got = deep_one(
                 cfg,
