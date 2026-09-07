@@ -5,9 +5,10 @@ import { Postings } from "./components/Postings";
 import { Runs } from "./components/Runs";
 import { Companies } from "./components/Companies";
 import { Resumes } from "./components/Resumes";
+import { Info } from "./components/Info";
 
-type Tab = "dashboard" | "runs" | "companies" | "postings" | "assessments" | "resumes";
-const TABS: Tab[] = ["dashboard", "runs", "companies", "postings", "assessments", "resumes"];
+type Tab = "dashboard" | "runs" | "companies" | "postings" | "assessments" | "resumes" | "info";
+const TABS: Tab[] = ["dashboard", "runs", "companies", "postings", "assessments", "resumes", "info"];
 const hashTab = (): Tab => {
   const h = window.location.hash.replace("#", "") as Tab;
   return TABS.includes(h) ? h : "dashboard";
@@ -58,7 +59,7 @@ export function App() {
         )}
         <ActivityPill rs={rs} />
         <nav className="tabs">
-          {(["dashboard", "runs", "companies", "postings", "assessments"] as Tab[]).map((t) => (
+          {TABS.map((t) => (
             <button
               key={t}
               className={tab === t ? "active" : ""}
@@ -90,6 +91,7 @@ export function App() {
         )}
         {tab === "assessments" && <Postings mode="assessed" />}
         {tab === "resumes" && <Resumes />}
+        {tab === "info" && <Info />}
       </main>
     </>
   );
