@@ -45,16 +45,23 @@ class AssessorConfig:
     base_url: str | None
     temperature: float
     api_key: str | None                   # resolved from .env, never from yaml
+    batch_size: int = 8                   # JDs per triage request
+    triage_jd_chars: int = 1800           # how much of each JD to send in triage
 
     @property
     def model_tag(self) -> str:
         """Full identifier stored on each assessment and shown in the UI."""
         if self.provider == "claude":
             return self.model
-        host = "groq" if (self.base_url and "groq" in self.base_url) else self.provider
         if self.provider == "ollama":
             host = "ollama"
-        return f"{host}/{self.model}"
+        elif self.base_url and "groq" in self.base_url:
+            host = "groq"
+        elif self.base_url and "googleapis" in self.base_url:
+            host = "gemini"
+        else:
+            host = "openai_compat"
+        return f"{host}:{self.model}"
 
 
 @dataclass(slots=True, frozen=True)
@@ -247,6 +254,8 @@ def _resolve_assessor(raw: dict | None) -> AssessorConfig | None:
         base_url=base_url,
         temperature=float(raw.get("temperature", 0)),
         api_key=key,
+        batch_size=int(raw.get("batch_size", 8)),
+        triage_jd_chars=int(raw.get("triage_jd_chars", 1800)),
     )
 
 

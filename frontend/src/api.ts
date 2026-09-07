@@ -50,7 +50,10 @@ export interface AssessorInfo {
   model: string | null;
   model_tag: string | null;
   has_key: boolean;
-  pending: number;
+  pending: number;      // level 0
+  triaged: number;      // level 1
+  deep: number;         // level 2
+  deep_ready: number;   // level 1, available for deep-assess
 }
 
 export interface Facets {
@@ -120,6 +123,10 @@ export interface Posting {
   starred: number;
   first_seen_at: string;
   last_seen_at: string;
+  assess_method: string | null;      // batch | single
+  score_overall: number | null;
+  score_chance: number | null;
+  score_quality: number | null;
   area: string | null;
   area_reason: string | null;
   target_quality: string | null;
@@ -163,7 +170,7 @@ export const api = {
   startRun: (body: {
     groups?: string[] | null;
     since?: string | null;
-    phase?: "cards" | "descriptions" | "full" | "assess";
+    phase?: "cards" | "descriptions" | "full" | "triage" | "deep";
     then_assess?: boolean;
     assess_limit?: number | null;
   }) => j<{ run_id: number }>("/runs", { method: "POST", body: JSON.stringify(body) }),

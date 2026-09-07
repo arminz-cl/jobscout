@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS postings (
 CREATE TABLE IF NOT EXISTS assessments (
     id               INTEGER PRIMARY KEY,
     posting_id       INTEGER NOT NULL REFERENCES postings(id),
+    method           TEXT,                -- batch | single
+    score_overall    INTEGER,             -- 0-100
+    score_chance     INTEGER,
+    score_quality    INTEGER,
     area             TEXT,
     area_reason      TEXT,
     target_quality   TEXT,
@@ -92,6 +96,10 @@ _MIGRATIONS = [
     "ALTER TABLE postings ADD COLUMN workplace_type TEXT",
     "ALTER TABLE postings ADD COLUMN matched_group TEXT",
     "ALTER TABLE assessments ADD COLUMN area_reason TEXT",
+    "ALTER TABLE assessments ADD COLUMN method TEXT",
+    "ALTER TABLE assessments ADD COLUMN score_overall INTEGER",
+    "ALTER TABLE assessments ADD COLUMN score_chance INTEGER",
+    "ALTER TABLE assessments ADD COLUMN score_quality INTEGER",
 ]
 
 
@@ -163,7 +171,7 @@ def postings_missing_description(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 def postings_pending_assessment(
     conn: sqlite3.Connection, *, run_id: int | None = None, limit: int | None = None
 ) -> list[sqlite3.Row]:
-    """Postings that have a description but no assessment yet."""
+    """Level 0: have a description, no assessment yet — for the triage (batch) pass."""
     sql = (
         "SELECT p.* FROM postings p LEFT JOIN assessments a ON a.posting_id = p.id "
         "WHERE a.id IS NULL AND p.description IS NOT NULL AND p.description != ''"
@@ -179,22 +187,51 @@ def postings_pending_assessment(
     return conn.execute(sql, params).fetchall()
 
 
+def postings_for_deep(conn: sqlite3.Connection, *, limit: int = 15) -> list[sqlite3.Row]:
+    """Level 1: triaged (method='batch') but not deep-assessed — highest score first."""
+    return conn.execute(
+        "SELECT p.* FROM postings p JOIN assessments a ON a.posting_id = p.id "
+        "WHERE a.method = 'batch' AND p.description IS NOT NULL AND p.description != '' "
+        "ORDER BY a.score_overall DESC, p.first_seen_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
+def assessment_counts(conn: sqlite3.Connection) -> dict:
+    total = conn.execute("SELECT COUNT(*) FROM postings").fetchone()[0]
+    with_desc = conn.execute(
+        "SELECT COUNT(*) FROM postings WHERE description IS NOT NULL AND description != ''"
+    ).fetchone()[0]
+    batch = conn.execute("SELECT COUNT(*) FROM assessments WHERE method = 'batch'").fetchone()[0]
+    single = conn.execute("SELECT COUNT(*) FROM assessments WHERE method = 'single'").fetchone()[0]
+    return {
+        "level0": with_desc - batch - single,   # has description, not assessed
+        "level1": batch,                          # triaged
+        "level2": single,                         # deep
+        "no_description": total - with_desc,
+    }
+
+
+_ASSESS_COLS = [
+    "posting_id", "method", "model", "score_overall", "score_chance", "score_quality",
+    "area", "area_reason", "target_quality", "chance", "verdict", "overall",
+    "keep_de_titles", "gaps_hit", "comp_vs_baseline", "assessed_at",
+]
+
+
 def store_assessment(conn: sqlite3.Connection, a) -> None:
     """Upsert one Assessment (see models.Assessment)."""
+    vals = (
+        a.posting_id, a.method, a.model, a.score_overall, a.score_chance, a.score_quality,
+        a.area, a.area_reason, a.target_quality, a.chance, a.verdict, a.overall,
+        int(a.keep_de_titles), json.dumps(a.gaps_hit), a.comp_vs_baseline, a.assessed_at,
+    )
+    placeholders = ",".join("?" * len(_ASSESS_COLS))
+    updates = ",".join(f"{c}=excluded.{c}" for c in _ASSESS_COLS if c != "posting_id")
     conn.execute(
-        "INSERT INTO assessments (posting_id, area, area_reason, target_quality, chance, verdict, "
-        "overall, keep_de_titles, gaps_hit, comp_vs_baseline, model, assessed_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
-        "ON CONFLICT(posting_id) DO UPDATE SET "
-        "area=excluded.area, area_reason=excluded.area_reason, target_quality=excluded.target_quality, "
-        "chance=excluded.chance, verdict=excluded.verdict, overall=excluded.overall, "
-        "keep_de_titles=excluded.keep_de_titles, gaps_hit=excluded.gaps_hit, "
-        "comp_vs_baseline=excluded.comp_vs_baseline, model=excluded.model, assessed_at=excluded.assessed_at",
-        (
-            a.posting_id, a.area, a.area_reason, a.target_quality, a.chance, a.verdict,
-            a.overall, int(a.keep_de_titles), json.dumps(a.gaps_hit), a.comp_vs_baseline,
-            a.model, a.assessed_at,
-        ),
+        f"INSERT INTO assessments ({','.join(_ASSESS_COLS)}) VALUES ({placeholders}) "
+        f"ON CONFLICT(posting_id) DO UPDATE SET {updates}",
+        vals,
     )
     conn.commit()
 
@@ -203,6 +240,8 @@ def store_assessment(conn: sqlite3.Connection, a) -> None:
 
 _POSTING_SELECT = """
 SELECT p.*,
+       a.method AS assess_method,
+       a.score_overall, a.score_chance, a.score_quality,
        a.area, a.area_reason, a.target_quality, a.chance, a.verdict, a.overall,
        a.gaps_hit, a.comp_vs_baseline, a.keep_de_titles, a.model AS assessed_model,
        a.assessed_at,
@@ -223,6 +262,7 @@ def list_postings(
     company: str | None = None,
     verdict: str | None = None,
     assessed: bool | None = None,
+    level: int | None = None,             # 0 none · 1 triaged · 2 deep
     has_description: bool | None = None,
     seen: bool | None = None,
     starred: bool | None = None,
@@ -261,6 +301,12 @@ def list_postings(
         where.append("a.id IS NOT NULL")
     elif assessed is False:
         where.append("a.id IS NULL")
+    if level == 0:
+        where.append("a.id IS NULL")
+    elif level == 1:
+        where.append("a.method = 'batch'")
+    elif level == 2:
+        where.append("a.method = 'single'")
     if has_description is True:
         where.append("p.description IS NOT NULL AND p.description != ''")
     elif has_description is False:
@@ -284,7 +330,10 @@ def list_postings(
         "first_seen_at": "p.first_seen_at DESC",
         "posted_at": "p.posted_at DESC",
         "company": "p.company COLLATE NOCASE",
-        "verdict": "CASE a.verdict WHEN 'pursue' THEN 0 WHEN 'maybe' THEN 1 WHEN 'skip' THEN 2 ELSE 3 END, p.first_seen_at DESC",
+        "verdict": "CASE a.verdict WHEN 'pursue' THEN 0 WHEN 'maybe' THEN 1 WHEN 'skip' THEN 2 ELSE 3 END, a.score_overall DESC",
+        "score": "a.score_overall DESC NULLS LAST, p.first_seen_at DESC",
+        "score_chance": "a.score_chance DESC NULLS LAST",
+        "score_quality": "a.score_quality DESC NULLS LAST",
     }.get(order, "p.first_seen_at DESC")
     sql = _POSTING_SELECT
     if where:

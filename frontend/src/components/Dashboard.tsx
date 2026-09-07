@@ -17,7 +17,7 @@ const SINCE_OPTIONS = [
   { value: "30d", label: "last 30 days" },
 ];
 
-const isAssess = (r: Run) => r.kind === "assess";
+const isAssess = (r: Run) => ["triage","deep"].includes(r.kind ?? "");
 
 export function Dashboard() {
   const [groups, setGroups] = useState<QueryGroup[]>([]);
@@ -188,20 +188,30 @@ export function Dashboard() {
                 className="primary"
                 disabled={busy || pending === 0 || !assessor.has_key}
                 onClick={() =>
-                  call(() => api.startRun({ phase: "assess", assess_limit: limitOrNull }))
+                  call(() => api.startRun({ phase: "triage", assess_limit: limitOrNull }))
                 }
+                title="batch: many JDs per request, coarse 0–100 scores"
               >
-                Assess {limitOrNull === null ? `all ${pending}` : Math.min(limitOrNull, pending)}
+                Triage {limitOrNull === null ? `all ${pending}` : Math.min(limitOrNull, pending)}
               </button>
-              <span className="muted" style={{ fontSize: 12 }}>
-                {facets?.assessed ?? 0} assessed · {pending} pending · one LLM call each
-              </span>
+              <button
+                disabled={busy || (assessor.deep_ready ?? 0) === 0 || !assessor.has_key}
+                onClick={() =>
+                  call(() => api.startRun({ phase: "deep", assess_limit: limitOrNull ?? 15 }))
+                }
+                title="deep: full rubric, one request per posting, highest score first"
+              >
+                Deep-assess top {limitOrNull ?? 15}
+              </button>
             </div>
             <div className="grid cols-2">
               <div className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>
-                Only postings that have a description get assessed. Turn on <b>+ assess</b> above to
-                score automatically after a fetch, or run it here on the backlog. Re-assess a single
-                posting from its drawer.
+                <b>Triage</b> batch-scores every posting with a description (0–100 overall / chance /
+                quality). <b>Deep-assess</b> runs the full rubric on the top-scoring ones, one call
+                each. Correct a single posting from its drawer.
+                <br />
+                level 0: {assessor.pending} · level 1 (triaged): {assessor.triaged} · level 2 (deep):{" "}
+                {assessor.deep}
               </div>
               <RunList runs={assessRuns} runner={runner} onRefresh={refresh} empty="No assessment runs yet." />
             </div>
@@ -247,7 +257,7 @@ function RunList({
             <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
               <b>#{run.id}</b>
               <span className="pill">{run.kind ?? "fetch"}</span>
-              {run.groups && run.kind !== "assess" && (
+              {run.groups && !["triage","deep"].includes(run.kind ?? "") && (
                 <span className="muted" style={{ fontSize: 12 }}>{groupsLabel(run.groups)}</span>
               )}
               <span
@@ -275,10 +285,10 @@ function RunList({
               <div className="progress"><div style={{ width: `${pct}%` }} /></div>
             )}
             <div className="muted" style={{ fontSize: 12 }}>
-              {run.kind === "assess"
+              {["triage","deep"].includes(run.kind ?? "")
                 ? `${run.n_assessed} assessed`
                 : `${run.n_unique} unique · ${run.n_new} new`}
-              {run.n_assessed > 0 && run.kind !== "assess" ? ` · ${run.n_assessed} assessed` : ""}
+              {run.n_assessed > 0 && !["triage","deep"].includes(run.kind ?? "") ? ` · ${run.n_assessed} assessed` : ""}
               {note && ` · ${note}`}
             </div>
           </div>

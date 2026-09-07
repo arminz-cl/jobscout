@@ -153,7 +153,8 @@ def assessor_info():
     except ConfigError as e:
         raise HTTPException(400, str(e)) from e
     conn = db.connect(cfg.db_path)
-    pending = len(db.postings_pending_assessment(conn))
+    counts = db.assessment_counts(conn)
+    deep_ready = len(db.postings_for_deep(conn, limit=10000))
     ac = cfg.assessor
     return {
         "configured": ac is not None,
@@ -161,7 +162,10 @@ def assessor_info():
         "model": ac.model if ac else None,
         "model_tag": ac.model_tag if ac else None,
         "has_key": bool(ac and ac.api_key) if ac else False,
-        "pending": pending,
+        "pending": counts["level0"],       # level 0 -> triage
+        "triaged": counts["level1"],
+        "deep": counts["level2"],
+        "deep_ready": deep_ready,           # level 1 -> can be deep-assessed
     }
 
 
@@ -183,6 +187,7 @@ def postings(
     company: str | None = None,
     verdict: str | None = None,
     assessed: bool | None = None,
+    level: int | None = None,
     has_description: bool | None = None,
     seen: bool | None = None,
     starred: bool | None = None,
@@ -202,8 +207,9 @@ def postings(
             raise HTTPException(400, str(e)) from e
     rows = db.list_postings(
         conn, query=query, group=group, queries=queries, run_id=run_id, company=company,
-        verdict=verdict, assessed=assessed, has_description=has_description, seen=seen,
-        starred=starred, status=status, search=search, order=order, limit=limit, offset=offset,
+        verdict=verdict, assessed=assessed, level=level, has_description=has_description,
+        seen=seen, starred=starred, status=status, search=search, order=order,
+        limit=limit, offset=offset,
     )
     return {"count": len(rows), "results": [_row(r) for r in rows]}
 

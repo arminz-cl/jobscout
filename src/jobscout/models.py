@@ -40,17 +40,30 @@ class Posting:
 
 @dataclass(slots=True)
 class Assessment:
-    """LLM verdict for a posting. Mirrors the assessment-guide rubric."""
+    """Assessment of a posting. Produced by a batch triage pass or a single deep call.
+
+    Numeric scores (0-100) drive ranking/selection; the categorical fields mirror
+    the assessment-guide rubric.
+    """
 
     posting_id: int
+    method: str                           # "batch" | "single"
+    model: str                            # full id, e.g. "groq:openai/gpt-oss-120b"
+
+    score_overall: int                    # 0-100 — overall fit
+    score_chance: int                     # 0-100 — odds of landing it
+    score_quality: int                    # 0-100 — how good the role is if landed
+
     area: str                             # A | B | C | D
-    area_reason: str                      # one clause — why this area (read-the-JD)
-    target_quality: str                   # high | med | low
-    chance: str                           # high | med | low
     verdict: str                          # pursue | maybe | skip
     overall: str                          # one-line reasoning
-    keep_de_titles: bool
-    gaps_hit: list[str]
     comp_vs_baseline: str                 # above | within | below | unknown
-    model: str                            # full identifier, e.g. "groq/llama-3.3-70b-versatile"
+    gaps_hit: list[str] = field(default_factory=list)
+
+    # filled by the single deep pass only
+    area_reason: str = ""
+    target_quality: str = ""              # high | med | low
+    chance: str = ""                      # high | med | low
+    keep_de_titles: bool = False
+
     assessed_at: str = field(default_factory=now_iso)
