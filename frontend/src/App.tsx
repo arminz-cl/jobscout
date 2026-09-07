@@ -96,13 +96,31 @@ export function App() {
 }
 
 function ActivityPill({ rs }: { rs: RunnerState | null }) {
+  const [, setTick] = useState(0);
+  const recvRef = useRef<{ key: string; at: number }>({ key: "", at: 0 });
+  useEffect(() => {
+    const t = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
   if (!rs) return null;
-  const a = rs.activity || "idle";
-  const rateLimited = /rate-limited|waiting/i.test(a);
+  let a = rs.activity || "idle";
   const failed = /failed/i.test(a);
   const stopped = a === "stopped";
-  const active = rs.busy || (a !== "idle" && !stopped && !failed);
 
+  // stamp when this status value first arrived, so the countdown keeps ticking between polls
+  const key = `${a}|${rs.activity_age}`;
+  if (recvRef.current.key !== key) recvRef.current = { key, at: Date.now() };
+
+  const m = a.match(/waiting (\d+)s/);
+  const rateLimited = !!m || /rate-limited/i.test(a);
+  if (m) {
+    const localElapsed = (Date.now() - recvRef.current.at) / 1000;
+    const left = Math.max(0, Math.round(+m[1] - (rs.activity_age ?? 0) - localElapsed));
+    a = a.replace(/waiting \d+s/, `retry in ${left}s`);
+  }
+
+  const active = rs.busy || (a !== "idle" && !stopped && !failed);
   const color = failed
     ? "var(--danger)"
     : rateLimited
@@ -114,7 +132,7 @@ function ActivityPill({ rs }: { rs: RunnerState | null }) {
   return (
     <span
       className="pill"
-      title={rs.activity_age != null ? `${rs.activity_age}s ago` : ""}
+      title={rs.activity_age != null ? `set ${rs.activity_age}s ago` : ""}
       style={{ color, marginLeft: 14, display: "inline-flex", gap: 6, alignItems: "center" }}
     >
       <span

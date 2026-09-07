@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 from . import db
@@ -116,6 +118,35 @@ def runs(limit: int = typer.Option(10, "--limit", "-n")) -> None:
             f"win={r['time_posted_used']}  fetched={r['n_fetched']} unique={r['n_unique']} "
             f"new={r['n_new']}"
         )
+
+
+@app.command()
+def eval(
+    limit: int = typer.Option(0, "--limit", "-n", help="only the first N labelled JDs"),
+    out: str = typer.Option("eval-results.md", "--out"),
+) -> None:
+    """Score the deep assessor against the hand-labelled JD set."""
+    from .eval import run_eval
+
+    cfg = _cfg()
+    s = run_eval(cfg, limit=limit or None)
+    lines = [
+        f"# Eval — {s['model']}\n",
+        (
+            f"n={s['n']} · verdict {s['verdict_acc']:.0%} · area {s['area_acc']:.0%} · "
+            f"quality {s['quality_acc']:.0%} · chance {s['chance_acc']:.0%} · "
+            f"pursue vs skip flips {s['pursue_skip_flips']}\n"
+        ),
+        "| JD | human | model | verdict | area |",
+        "|---|---|---|---|---|",
+    ]
+    for r in s["results"]:
+        lines.append(
+            f"| {r['file']} | {r['human']} | {r['model']} | "
+            f"{'ok' if r['v_ok'] else '**MISS**'} | {'ok' if r['a_ok'] else 'MISS'} |"
+        )
+    Path(out).write_text("\n".join(lines) + "\n")
+    typer.echo(f"\nwrote {out}")
 
 
 if __name__ == "__main__":
