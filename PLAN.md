@@ -194,7 +194,16 @@ Open review items carried forward (from a code-review pass):
 - Personalized LinkedIn feed / logged-in scraping
 - Multi-source + cross-source dedupe (same job on LinkedIn + Greenhouse)
 - Feedback loop: mark good/bad → few-shot examples or threshold tuning
-- Auto-generate a tailored resume draft for `pursue` hits
 - Comp inference when the posting omits it
 - Company-health / Glassdoor signal in the trajectory score
-- Per-company rating that actually feeds the assessor (the `companies.rating` column exists; unused)
+- Per-company rating that actually feeds the assessor (the `companies.rating` column exists,
+  hand-populated; not yet an input to scoring)
+- **`triage_*` score columns** kept separate from `score_*` so a deep pass doesn't overwrite the
+  triage baseline — makes triage-vs-deep drift measurable
+- **`with_structured_output` for the LLM call** — replace the hand-rolled `_extract_json` +
+  `_validate` + retry with `instructor` (small) or LangChain-core's structured-output helper.
+  Only worth it if a second chain shape appears; skip the rest of LangChain.
+- **Tracing** — LangSmith-style call tracing (exact prompt, tokens, parse failures) for tuning
+  the assessor prompt against the eval. Could be a thin local logger, not a dependency.
+- **`.with_fallbacks`-style provider failover** — auto-switch assessor key/model when one hits a
+  quota, instead of the manual `.env` swap
