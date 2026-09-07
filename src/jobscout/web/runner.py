@@ -8,10 +8,11 @@ cancel flag (threads can't be force-killed, so run_fetch checks it between steps
 from __future__ import annotations
 
 import threading
+import time
 import traceback
 from dataclasses import dataclass, field
 
-from .. import db
+from .. import assess, db
 from ..config import Config, load, resolve_window
 from ..fetch import run_fetch
 
@@ -28,6 +29,18 @@ class JobState:
 
 _lock = threading.Lock()
 _current: JobState | None = None
+_activity = "idle"            # fine-grained live status for the UI
+_activity_at = 0.0
+
+
+def _set_activity(msg: str) -> None:
+    global _activity, _activity_at
+    _activity = msg
+    _activity_at = time.time()
+
+
+def activity() -> tuple[str, float]:
+    return _activity, _activity_at
 
 
 def current() -> JobState | None:
@@ -107,6 +120,8 @@ def _run_job(
     cancel: threading.Event,
 ) -> None:
     conn = db.connect(cfg.db_path)
+    assess.STATUS = _set_activity
+    _set_activity(f"starting {phase}")
     try:
         if phase == "triage":
             # for a triage phase, `groups` (if the caller passed a subset) narrows to those areas
@@ -126,10 +141,13 @@ def _run_job(
     except Exception as e:  # noqa: BLE001 - surface any failure to the UI
         traceback.print_exc()
         db.finish_run(conn, run_id, status="failed", counts={}, note=f"{type(e).__name__}: {e}")
+        _set_activity(f"failed: {e}")
         with _lock:
             if _current and _current.run_id == run_id:
                 _current.error = str(e)
     finally:
+        assess.STATUS = None
+        _set_activity("idle")
         conn.close()
 
 

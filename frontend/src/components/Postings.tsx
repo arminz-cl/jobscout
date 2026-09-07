@@ -38,7 +38,7 @@ export function Postings({
   const [resumeOnly, setResumeOnly] = useState(false);
   const [hasDesc, setHasDesc] = useState<Tri>("any");
   const [level, setLevel] = useState<string>("");   // "" | "0" | "1" | "2"
-  const [order, setOrder] = useState(mode === "assessed" ? "score" : "first_seen_at");
+  const [order, setOrder] = useState("score");
   const [sel, setSel] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

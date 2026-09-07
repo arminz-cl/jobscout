@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -122,12 +123,15 @@ def get_run(run_id: int):
 @app.get("/api/runner")
 def runner_state():
     cur = runner.current()
+    act, act_at = runner.activity()
     return {
         "busy": runner.is_busy(),
         "current_run_id": cur.run_id if cur else None,
         "kind": cur.kind if cur else None,
         "groups": cur.groups if cur else None,
         "error": cur.error if cur else None,
+        "activity": act,
+        "activity_age": round(time.time() - act_at, 1) if act_at else None,
     }
 
 

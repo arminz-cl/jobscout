@@ -32,6 +32,19 @@ _PROFILE_FILES = [
 ]
 _RUBRIC_FILE = "assessment-guide.md"
 
+# optional live-status hook — the runner sets this so the UI can show fine-grained state
+# ("calling groq…", "rate-limited, waiting 21s", "idle").
+STATUS = None  # type: ignore[assignment]
+
+
+def _status(msg: str) -> None:
+    if STATUS is not None:
+        try:
+            STATUS(msg)
+        except Exception:  # noqa: BLE001, S110 - status must never break a run
+            pass  # nosec
+
+
 _AREAS = {"A", "B", "C", "D"}
 _LMH = {"high", "med", "low"}
 _VERDICTS = {"pursue", "maybe", "skip"}
@@ -179,15 +192,19 @@ def _chat_raw(ac: AssessorConfig, system: str, user: str, *, json_mode: bool) ->
     if json_mode:
         body["response_format"] = {"type": "json_object"}
     url = ac.base_url.rstrip("/") + "/chat/completions"
+    host = "groq" if "groq" in (ac.base_url or "") else "provider"
     for attempt in range(4):
+        _status(f"calling {host} ({ac.model})")
         r = httpx.post(url, headers=headers, json=body, timeout=180.0)
         if r.status_code == 429:
             wait = float(r.headers.get("retry-after", 0)) or min(15 * (attempt + 1), 60)
+            _status(f"{host} rate-limited — waiting {round(wait)}s (retry {attempt + 1}/4)")
             time.sleep(wait)
             continue
         if r.status_code == 413:
             raise AssessError("request too large for this tier — lower batch_size / triage_jd_chars")
         r.raise_for_status()
+        _status("parsing response")
         return r.json()["choices"][0]["message"]["content"]
     raise AssessError("rate limited after retries — wait and retry")
 
@@ -337,12 +354,15 @@ def triage_pending(
     items = [_row_item(r) for r in rows]
     bs = max(1, cfg.assessor.batch_size)
     done = failed = 0
+    n_chunks = (len(items) + bs - 1) // bs
     for i in range(0, len(items), bs):
         if cancel and cancel.is_set():
+            _status("stopped")
             break
         if i:
             time.sleep(1.0)
         chunk = items[i : i + bs]
+        _status(f"triage batch {i // bs + 1}/{n_chunks} ({len(chunk)} postings)")
         try:
             verdicts = triage_batch(cfg, chunk)
             for pid, v in verdicts.items():
@@ -376,9 +396,11 @@ def deep_top(
     done = failed = 0
     for i, row in enumerate(rows):
         if cancel and cancel.is_set():
+            _status("stopped")
             break
         if i:
             time.sleep(1.0)
+        _status(f"deep {i + 1}/{len(rows)} — {row['company']}")
         try:
             _deep_store(conn, cfg, row)
             done += 1

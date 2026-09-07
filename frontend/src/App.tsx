@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { api, AppConfig, seedGroupTitles, windowLabel } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { api, AppConfig, RunnerState, seedGroupTitles, windowLabel } from "./api";
 import { Dashboard } from "./components/Dashboard";
 import { Postings } from "./components/Postings";
 import { Runs } from "./components/Runs";
@@ -23,10 +23,16 @@ export function App() {
   const [err, setErr] = useState<string | null>(null);
   const [runFilter, setRunFilter] = useState<number | null>(null);
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
+  const [rs, setRs] = useState<RunnerState | null>(null);
+  const poll = useRef<number>();
 
   useEffect(() => {
     api.config().then(setCfg).catch((e) => setErr(String(e.message)));
     api.queryGroups().then(seedGroupTitles).catch(() => {});
+    const tick = () => api.runner().then(setRs).catch(() => {});
+    tick();
+    poll.current = window.setInterval(tick, 2500);
+    return () => window.clearInterval(poll.current);
   }, []);
 
   const openRun = (id: number) => {
@@ -47,10 +53,10 @@ export function App() {
         {cfg && (
           <span className="meta">
             mode <b>{cfg.mode}</b> &nbsp;·&nbsp; {cfg.source} &nbsp;·&nbsp; {cfg.model} &nbsp;·&nbsp;
-            next window <b>{windowLabel(cfg.resolved_window)}</b> &nbsp;·&nbsp;
-            last run {cfg.last_run ? new Date(cfg.last_run).toLocaleString() : "never"}
+            next window <b>{windowLabel(cfg.resolved_window)}</b>
           </span>
         )}
+        <ActivityPill rs={rs} />
         <nav className="tabs">
           {(["dashboard", "runs", "companies", "postings", "assessments"] as Tab[]).map((t) => (
             <button
@@ -86,5 +92,42 @@ export function App() {
         {tab === "resumes" && <Resumes />}
       </main>
     </>
+  );
+}
+
+function ActivityPill({ rs }: { rs: RunnerState | null }) {
+  if (!rs) return null;
+  const a = rs.activity || "idle";
+  const rateLimited = /rate-limited|waiting/i.test(a);
+  const failed = /failed/i.test(a);
+  const stopped = a === "stopped";
+  const active = rs.busy || (a !== "idle" && !stopped && !failed);
+
+  const color = failed
+    ? "var(--danger)"
+    : rateLimited
+      ? "var(--maybe)"
+      : active
+        ? "var(--accent)"
+        : "var(--muted)";
+
+  return (
+    <span
+      className="pill"
+      title={rs.activity_age != null ? `${rs.activity_age}s ago` : ""}
+      style={{ color, marginLeft: 14, display: "inline-flex", gap: 6, alignItems: "center" }}
+    >
+      <span
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: "50%",
+          background: color,
+          animation: active && !rateLimited ? "pulse 1.2s ease-in-out infinite" : "none",
+        }}
+      />
+      {rs.busy && rs.current_run_id ? `#${rs.current_run_id} · ` : ""}
+      {a}
+    </span>
   );
 }

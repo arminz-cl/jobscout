@@ -42,6 +42,8 @@ export interface RunnerState {
   kind: string | null;
   groups: string[] | null;
   error: string | null;
+  activity: string;
+  activity_age: number | null;
 }
 
 export interface AssessorInfo {
