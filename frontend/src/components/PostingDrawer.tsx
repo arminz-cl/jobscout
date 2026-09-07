@@ -141,7 +141,21 @@ export function PostingDrawer({
             </dl>
 
             <div className="panel" style={{ background: "var(--panel-2)" }}>
-              <h2>Assessment</h2>
+              <h2>
+                Assessment ·{" "}
+                {p.assess_method === "single"
+                  ? "level 2 · deep"
+                  : p.assess_method === "batch"
+                    ? "level 1 · triaged"
+                    : "level 0 · none"}
+              </h2>
+              {p.score_overall != null && (
+                <div style={{ display: "flex", gap: 16, marginBottom: 8 }}>
+                  <Score label="overall" v={p.score_overall} />
+                  <Score label="chance" v={p.score_chance} />
+                  <Score label="quality" v={p.score_quality} />
+                </div>
+              )}
               {p.verdict ? (
                 <>
                   <div style={{ marginBottom: 8 }}>
@@ -150,9 +164,11 @@ export function PostingDrawer({
                       area {p.area}
                       {p.area && AREA_NAMES[p.area] ? ` · ${AREA_NAMES[p.area]}` : ""}
                     </span>{" "}
-                    <span className="muted">
-                      quality {p.target_quality} · chance {p.chance} · comp {p.comp_vs_baseline}
-                    </span>
+                    {p.assess_method === "single" && (
+                      <span className="muted">
+                        quality {p.target_quality} · chance {p.chance} · comp {p.comp_vs_baseline}
+                      </span>
+                    )}
                   </div>
                   {p.area_reason && (
                     <p style={{ margin: "6px 0", fontSize: 13 }} className="muted">
@@ -166,14 +182,18 @@ export function PostingDrawer({
                     </div>
                   )}
                   <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-                    <span className="pill">{p.assessed_model ?? "?"}</span> · assessed {p.assessed_at}
+                    <span className="pill">{p.assessed_model ?? "?"}</span> · {p.assessed_at}
                   </div>
                 </>
               ) : (
                 <div className="muted">Not assessed yet.</div>
               )}
               <button onClick={assess} disabled={busy} style={{ marginTop: 10 }}>
-                {busy ? "assessing…" : p.verdict ? "re-assess" : "assess now"}
+                {busy
+                  ? "assessing…"
+                  : p.assess_method === "single"
+                    ? "re-assess (deep)"
+                    : "deep-assess this one"}
               </button>
             </div>
 
@@ -191,5 +211,15 @@ export function PostingDrawer({
         )}
       </aside>
     </>
+  );
+}
+
+function Score({ label, v }: { label: string; v: number | null }) {
+  const color = v == null ? "var(--muted)" : v >= 70 ? "var(--pursue)" : v >= 45 ? "var(--maybe)" : "var(--skip)";
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 700, color }}>{v ?? "—"}</div>
+      <div className="muted" style={{ fontSize: 11 }}>{label}</div>
+    </div>
   );
 }

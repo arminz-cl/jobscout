@@ -6,6 +6,11 @@ type Tri = "any" | "yes" | "no";
 const cycle = (t: Tri): Tri => (t === "any" ? "yes" : t === "yes" ? "no" : "any");
 const triParam = (t: Tri): boolean | undefined => (t === "any" ? undefined : t === "yes");
 
+// assessment level from the stored method
+const levelOf = (p: Posting): 0 | 1 | 2 =>
+  p.assess_method === "single" ? 2 : p.assess_method === "batch" ? 1 : 0;
+const LEVEL_LABEL = ["—", "triaged", "deep"];
+
 export function Postings({
   mode,
   runId,
@@ -27,7 +32,8 @@ export function Postings({
   const [unseenOnly, setUnseenOnly] = useState(false);
   const [starredOnly, setStarredOnly] = useState(false);
   const [hasDesc, setHasDesc] = useState<Tri>("any");
-  const [order, setOrder] = useState(mode === "assessed" ? "verdict" : "first_seen_at");
+  const [level, setLevel] = useState<string>("");   // "" | "0" | "1" | "2"
+  const [order, setOrder] = useState(mode === "assessed" ? "score" : "first_seen_at");
   const [sel, setSel] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -42,7 +48,8 @@ export function Postings({
           group: group || undefined,
           company: company || undefined,
           run_id: runId ?? undefined,
-          assessed: mode === "assessed" ? true : undefined,
+          assessed: mode === "assessed" && level === "" ? true : undefined,
+          level: level === "" ? undefined : Number(level),
           seen: unseenOnly ? false : undefined,
           starred: starredOnly ? true : undefined,
           has_description: triParam(hasDesc),
@@ -61,7 +68,7 @@ export function Postings({
     } finally {
       setLoading(false);
     }
-  }, [search, verdict, group, company, runId, unseenOnly, starredOnly, hasDesc, order, mode]);
+  }, [search, verdict, group, company, runId, unseenOnly, starredOnly, hasDesc, level, order, mode]);
 
   useEffect(() => {
     if (initialCompany != null) setCompany(initialCompany);
@@ -103,6 +110,12 @@ export function Postings({
             </option>
           ))}
         </select>
+        <select value={level} onChange={(e) => setLevel(e.target.value)} title="assessment level">
+          <option value="">any level</option>
+          <option value="0">0 · not assessed</option>
+          <option value="1">1 · triaged</option>
+          <option value="2">2 · deep</option>
+        </select>
         {mode === "assessed" && (
           <select value={verdict} onChange={(e) => setVerdict(e.target.value)}>
             {["", "pursue", "maybe", "skip"].map((v) => (
@@ -143,6 +156,9 @@ export function Postings({
           <option value="posted_at">newest posted</option>
           <option value="company">company</option>
           <option value="verdict">verdict</option>
+          <option value="score">score · overall</option>
+          <option value="score_chance">score · chance</option>
+          <option value="score_quality">score · quality</option>
         </select>
 
         <span className="muted">{loading ? "…" : `${count} shown`}</span>
@@ -157,8 +173,7 @@ export function Postings({
 
       {mode === "assessed" && count === 0 && !loading && (
         <div className="empty">
-          No assessments match. The assessor (Phase 3) hasn't run yet — fetched postings are on the
-          Postings tab.
+          No assessed postings match. Run <b>Triage</b> on the Dashboard to score them.
         </div>
       )}
 
@@ -170,13 +185,13 @@ export function Postings({
               <th>Role</th>
               <th>Intent</th>
               <th>Location</th>
-              <th>Work</th>
+              <th title="0 not assessed · 1 triaged · 2 deep">Lvl</th>
+              <th title="overall / chance / quality (0–100)">Score</th>
+              <th>Verdict</th>
+              {mode === "assessed" && <th>Area</th>}
+              {mode === "assessed" && <th>Model</th>}
               <th>Posted</th>
               <th title="has description">JD</th>
-              <th title="has assessment">✓</th>
-              {mode === "assessed" && <th>Area</th>}
-              {mode === "assessed" && <th>Verdict</th>}
-              {mode === "assessed" && <th>Model</th>}
               <th>Run</th>
             </tr>
           </thead>
@@ -217,19 +232,36 @@ export function Postings({
                   )}
                 </td>
                 <td>{p.location}</td>
-                <td className="muted">{p.workplace_type ?? "—"}</td>
-                <td className="muted">{p.posted_at ?? "—"}</td>
-                <td style={{ textAlign: "center" }} title={p.description ? "has JD" : "no JD"}>
-                  {p.description ? "✓" : ""}
+                <td>
+                  <span
+                    className="pill"
+                    title={LEVEL_LABEL[levelOf(p)]}
+                    style={{
+                      color:
+                        levelOf(p) === 2 ? "var(--pursue)"
+                        : levelOf(p) === 1 ? "var(--maybe)"
+                        : "var(--muted)",
+                    }}
+                  >
+                    {levelOf(p)}
+                  </span>
                 </td>
-                <td style={{ textAlign: "center" }} title={p.verdict ? "assessed" : "not assessed"}>
-                  {p.verdict || p.assessed_at ? "✓" : ""}
+                <td style={{ fontVariantNumeric: "tabular-nums", fontSize: 12 }}>
+                  {p.score_overall == null ? (
+                    <span className="muted">—</span>
+                  ) : (
+                    <>
+                      <b>{p.score_overall}</b>
+                      <span className="muted"> · {p.score_chance} · {p.score_quality}</span>
+                    </>
+                  )}
                 </td>
+                <td>{p.verdict ? <span className={"pill " + p.verdict}>{p.verdict}</span> : "—"}</td>
                 {mode === "assessed" && (
                   <td>
                     {p.area ? (
                       <span className="pill area" title={AREA_NAMES[p.area]}>
-                        {p.area} · {AREA_NAMES[p.area] ?? "?"}
+                        {p.area}
                       </span>
                     ) : (
                       "—"
@@ -237,11 +269,12 @@ export function Postings({
                   </td>
                 )}
                 {mode === "assessed" && (
-                  <td>{p.verdict ? <span className={"pill " + p.verdict}>{p.verdict}</span> : "—"}</td>
-                )}
-                {mode === "assessed" && (
                   <td className="muted" style={{ fontSize: 11 }}>{p.assessed_model ?? "—"}</td>
                 )}
+                <td className="muted">{p.posted_at ?? "—"}</td>
+                <td style={{ textAlign: "center" }} title={p.description ? "has JD" : "no JD"}>
+                  {p.description ? "✓" : ""}
+                </td>
                 <td className="muted">{p.first_run_id ? `#${p.first_run_id}` : "—"}</td>
               </tr>
             ))}
