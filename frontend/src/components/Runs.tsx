@@ -97,8 +97,10 @@ export function Runs({ onOpenRun }: { onOpenRun: (id: number) => void }) {
               <td className="muted">{new Date(r.started_at).toLocaleString()}</td>
               <td className="muted">{duration(r)}</td>
               <td>
-                {isAssessKind(r.kind) ? (
-                  <><b>{r.n_assessed}</b> assessed</>
+                {r.kind === "triage" ? (
+                  <><b>{r.n_assessed}</b> triaged</>
+                ) : r.kind === "deep" ? (
+                  <><b>{r.n_assessed}</b> deep-assessed</>
                 ) : r.kind === "backfill" ? (
                   <><b>{r.n_new}</b> descriptions</>
                 ) : (

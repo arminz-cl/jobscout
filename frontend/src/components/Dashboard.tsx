@@ -278,10 +278,14 @@ function RunList({
               <div className="progress"><div style={{ width: `${pct}%` }} /></div>
             )}
             <div className="muted" style={{ fontSize: 12 }}>
-              {["triage","deep"].includes(run.kind ?? "")
-                ? `${run.n_assessed} assessed`
-                : `${run.n_unique} unique · ${run.n_new} new`}
-              {run.n_assessed > 0 && !["triage","deep"].includes(run.kind ?? "") ? ` · ${run.n_assessed} assessed` : ""}
+              {run.kind === "triage"
+                ? `${run.n_assessed} triaged`
+                : run.kind === "deep"
+                  ? `${run.n_assessed} deep-assessed`
+                  : run.kind === "backfill"
+                    ? `${run.n_new} descriptions`
+                    : `${run.n_unique} seen · ${run.n_new} new` +
+                      (run.n_assessed > 0 ? ` · ${run.n_assessed} triaged` : "")}
               {note && ` · ${note}`}
             </div>
           </div>

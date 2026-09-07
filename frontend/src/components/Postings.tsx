@@ -175,12 +175,29 @@ export function Postings({
 
       {err && <div className="error">{err}</div>}
 
-      <div className="muted" style={{ fontSize: 12, margin: "0 0 10px", lineHeight: 1.7 }}>
-        <b>Score</b> (0–100 each): <b>overall</b> fit · <b>chance</b> of landing it (profile vs. the
-        JD) · <b>quality</b> of the role if landed (the trajectory bar).
-        &nbsp;·&nbsp; <b>Assessed</b>: <span style={{ color: "var(--maybe)" }}>triaged</span> = quick
-        batch score · <span style={{ color: "var(--pursue)" }}>deep</span> = full rubric with
-        reasoning &amp; gaps.
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "8px 12px",
+          margin: "0 0 12px",
+          fontSize: 12,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "4px 18px",
+          background: "var(--panel-2)",
+        }}
+      >
+        <span className="muted"><b style={{ color: "var(--text)" }}>Score</b> shown as <b>overall</b> · chance · quality (0–100):</span>
+        <span><b>overall</b> — combined fit</span>
+        <span><b>chance</b> — odds of landing it (your profile vs. the JD)</span>
+        <span><b>quality</b> — how good the role is if landed (trajectory bar)</span>
+        <span className="muted" style={{ width: "100%" }}>
+          <b style={{ color: "var(--text)" }}>Assessed</b>:{" "}
+          <span style={{ color: "var(--muted)" }}>none</span> ·{" "}
+          <span style={{ color: "var(--maybe)" }}>triaged</span> (quick batch score) ·{" "}
+          <span style={{ color: "var(--pursue)" }}>deep</span> (full rubric, reasoning &amp; gaps)
+        </span>
       </div>
 
       {mode === "assessed" && count === 0 && !loading && (
@@ -198,7 +215,7 @@ export function Postings({
               <th>Intent</th>
               <th>Location</th>
               <th>Assessed</th>
-              <th title="overall / chance / quality (0–100)">Score</th>
+              <th title="overall · chance · quality (0–100)">Score<span className="muted" style={{ fontWeight: 400 }}> o·c·q</span></th>
               <th>Verdict</th>
               {mode === "assessed" && <th>Area</th>}
               {mode === "assessed" && <th>Model</th>}
