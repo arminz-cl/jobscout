@@ -46,7 +46,8 @@ class AssessError(RuntimeError):
 
 _ANNOTATION_RE = re.compile(r"\s*\[(?:VERIFY|ADD|CONFLICT|CLARIFY|GAP)[:\]][^\]]*\]?", re.IGNORECASE)
 _CUT_MARKERS = ("## Framing decisions", "## Notes for tailoring", "## Framing")
-_PACK_MAX_CHARS = 13000
+_PACK_DEEP_CHARS = 13000       # full profile for the one-JD deep pass
+_PACK_TRIAGE_CHARS = 4500      # short profile for the batched coarse pass (fits free-tier limits)
 
 
 def _condense(text: str) -> str:
@@ -72,11 +73,14 @@ def _read_dir_files(dir_str: str, names: tuple[str, ...], condense: bool) -> str
     return "\n\n---\n\n".join(parts)
 
 
-def build_profile_pack(cfg: Config) -> str:
-    pack = _read_dir_files(str(cfg.profile_dir), tuple(_PROFILE_FILES), True)
+def build_profile_pack(cfg: Config, *, brief: bool = False) -> str:
+    # brief mode: the two files that actually drive scoring, hard-capped
+    names = ("target-areas.md", "evaluating-offers.md") if brief else tuple(_PROFILE_FILES)
+    cap = _PACK_TRIAGE_CHARS if brief else _PACK_DEEP_CHARS
+    pack = _read_dir_files(str(cfg.profile_dir), names, True)
     if not pack:
-        raise AssessError(f"no profile files in {cfg.profile_dir} (want {_PROFILE_FILES})")
-    return pack[:_PACK_MAX_CHARS] + ("\n\n[truncated]" if len(pack) > _PACK_MAX_CHARS else "")
+        raise AssessError(f"no profile files in {cfg.profile_dir} (want {names})")
+    return pack[:cap] + ("\n\n[truncated]" if len(pack) > cap else "")
 
 
 def load_rubric(cfg: Config) -> str:
@@ -86,13 +90,16 @@ def load_rubric(cfg: Config) -> str:
     return rubric
 
 
-def _base_system(cfg: Config) -> str:
+def _base_system(cfg: Config, *, brief: bool = False) -> str:
+    rubric = load_rubric(cfg)
+    if brief:
+        rubric = rubric[:2600]        # scoring scales are near the top
     return (
         "You assess job postings for a specific candidate. Use the candidate profile and the "
         "scoring rubric below. Judge the *work* described, not the title.\n\n"
         f"Current job-search mode: {cfg.mode}\n\n"
-        "# CANDIDATE PROFILE\n\n" + build_profile_pack(cfg) + "\n\n"
-        "# SCORING RUBRIC\n\n" + load_rubric(cfg)
+        "# CANDIDATE PROFILE\n\n" + build_profile_pack(cfg, brief=brief) + "\n\n"
+        "# SCORING RUBRIC\n\n" + rubric
     )
 
 
@@ -233,7 +240,7 @@ def _common(d: dict) -> dict:
 def triage_batch(cfg: Config, items: list[dict]) -> dict[int, dict]:
     """items: [{id, title, company, location, description}]. Returns {id: verdict-dict}."""
     ac = cfg.assessor
-    system = _base_system(cfg) + _TRIAGE_SYSTEM_TAIL
+    system = _base_system(cfg, brief=True) + _TRIAGE_SYSTEM_TAIL
     blocks = []
     for n, it in enumerate(items, 1):
         blocks.append(
