@@ -1,5 +1,6 @@
 .env
 config.yaml
+resume.private.md
 jobscout.db
 __pycache__/
 .venv/

@@ -232,23 +232,26 @@ def _chat(ac: AssessorConfig, system: str, user: str) -> dict:
 
 def _chat_raw(ac: AssessorConfig, system: str, user: str, *, json_mode: bool) -> str:
     """Return the model's message content as text. json_mode adds response_format."""
+    return chat_turns(ac, system, [{"role": "user", "content": user}], json_mode=json_mode)
+
+
+def chat_turns(ac, system: str, turns: list[dict], *, json_mode: bool) -> str:
+    """Multi-turn variant of _chat_raw. `turns` is a list of {role, content} in
+    order (user/assistant), no system entry. Accepts AssessorConfig or ResumeConfig."""
     if ac.provider == "claude":
-        return _chat_claude_raw(ac, system, user)
+        return _chat_claude_turns(ac, system, turns)
 
     if not ac.base_url:
-        raise AssessError("assessor.base_url is required for provider openai_compat")
+        raise AssessError("base_url is required for provider openai_compat")
     headers = {"Content-Type": "application/json"}
     if ac.api_key:
         headers["Authorization"] = f"Bearer {ac.api_key}"
     elif ac.provider != "ollama":
-        raise AssessError("no API key — set ASSESSOR_API_KEY in .env (free at console.groq.com)")
+        raise AssessError("no API key — set ASSESSOR_API_KEY / RESUME_API_KEY in .env")
     body = {
         "model": ac.model,
         "temperature": ac.temperature,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+        "messages": [{"role": "system", "content": system}, *turns],
     }
     if "gpt-oss" in ac.model or "deepseek" in ac.model or "qwen" in ac.model:
         # reasoning models: minimal thinking — assessment is structured judgement, not a puzzle
@@ -278,10 +281,14 @@ def _chat_claude(ac: AssessorConfig, system: str, user: str) -> dict:
 
 
 def _chat_claude_raw(ac: AssessorConfig, system: str, user: str) -> str:
+    return _chat_claude_turns(ac, system, [{"role": "user", "content": user}])
+
+
+def _chat_claude_turns(ac, system: str, turns: list[dict]) -> str:
     try:
         import anthropic
     except ImportError as e:
-        raise AssessError('provider "claude" needs: pip install -e ".[claude]"') from e
+        raise AssessError('provider "claude" needs: pip install anthropic') from e
     if not ac.api_key:
         raise AssessError("no ANTHROPIC_API_KEY in .env")
     client = anthropic.Anthropic(api_key=ac.api_key)
@@ -289,7 +296,7 @@ def _chat_claude_raw(ac: AssessorConfig, system: str, user: str) -> str:
         model=ac.model,
         max_tokens=4096,
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user}],
+        messages=turns or [{"role": "user", "content": "(begin)"}],
     )
     return "".join(b.text for b in msg.content if b.type == "text")
 

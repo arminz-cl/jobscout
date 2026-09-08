@@ -73,6 +73,10 @@ def get_config():
         "quality_weight": (
             round(assess._quality_weight(cfg), 2) if cfg.assessor else None
         ),
+        "resume_builder": bool(
+            cfg.resume and (cfg.resume.api_key or cfg.resume.provider == "ollama")
+        ),
+        "resume_model": cfg.resume.model_tag if cfg.resume else None,
     }
 
 
@@ -430,6 +434,81 @@ def resume_detail(resume_id: int):
 def resume_delete(resume_id: int):
     conn = _conn()
     db.delete_resume(conn, resume_id)
+    return {"ok": True}
+
+
+# -- interactive resume builder -----------------------------------------
+
+
+class BuilderReply(BaseModel):
+    text: str
+
+
+@app.get("/api/postings/{posting_id}/builder")
+def builder_get(posting_id: int):
+    conn = _conn()
+    s = db.get_resume_session(conn, posting_id)
+    if not s:
+        raise HTTPException(404, "no builder session for this posting")
+    from ..resume import _session_payload
+
+    return _session_payload(conn, s["id"])
+
+
+@app.post("/api/postings/{posting_id}/builder")
+def builder_start(posting_id: int):
+    from ..assess import AssessError
+    from ..resume import start_builder
+
+    cfg = load()
+    conn = db.connect(cfg.db_path)
+    row = db.get_posting(conn, posting_id)
+    if not row:
+        raise HTTPException(404, "no such posting")
+    if not (row["description"] or "").strip():
+        from ..fetch import fetch_one_description
+
+        try:
+            fetch_one_description(conn, cfg, posting_id)
+        except Exception as e:
+            raise HTTPException(502, f"could not fetch description: {e}") from e
+    try:
+        return start_builder(conn, cfg, posting_id)
+    except AssessError as e:
+        raise HTTPException(502, f"builder start failed: {e}") from e
+
+
+@app.post("/api/builder/{session_id}/reply")
+def builder_send(session_id: int, body: BuilderReply):
+    from ..assess import AssessError
+    from ..resume import builder_reply
+
+    if not body.text.strip():
+        raise HTTPException(400, "empty message")
+    cfg = load()
+    conn = db.connect(cfg.db_path)
+    try:
+        return builder_reply(conn, cfg, session_id, body.text)
+    except AssessError as e:
+        raise HTTPException(502, f"builder reply failed: {e}") from e
+
+
+@app.post("/api/builder/{session_id}/save")
+def builder_save(session_id: int):
+    from ..assess import AssessError
+    from ..resume import save_builder
+
+    conn = _conn()
+    try:
+        return save_builder(conn, session_id)
+    except AssessError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.delete("/api/postings/{posting_id}/builder")
+def builder_reset(posting_id: int):
+    conn = _conn()
+    db.delete_resume_session(conn, posting_id)
     return {"ok": True}
 
 

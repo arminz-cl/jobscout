@@ -224,8 +224,17 @@ export function PostingDrawer({
             <div className="panel" style={{ background: "var(--panel-2)", marginTop: 14 }}>
               <h2>Resume {resume ? `· base ${resume.base ?? "?"}` : ""}</h2>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  className="primary"
+                  disabled={!p.description}
+                  onClick={() => {
+                    window.location.hash = `builder/${id}`;
+                  }}
+                >
+                  build resume (chat)
+                </button>
                 <button onClick={genResume} disabled={resumeBusy || !p.description}>
-                  {resumeBusy ? "generating…" : resume ? "regenerate" : "generate resume"}
+                  {resumeBusy ? "generating…" : resume ? "one-shot regenerate" : "one-shot generate"}
                 </button>
                 {resume && (
                   <button onClick={() => setShowResume((s) => !s)}>

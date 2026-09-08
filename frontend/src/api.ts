@@ -8,6 +8,8 @@ export interface AppConfig {
   last_run: string | null;
   max_results_per_query: number;
   quality_weight: number | null;
+  resume_builder: boolean;
+  resume_model: string | null;
 }
 
 export interface QueryGroup {
@@ -217,7 +219,42 @@ export const api = {
   resumes: () => j<ResumeListItem[]>("/resumes"),
   resume: (id: number) => j<Resume>(`/resumes/${id}`),
   deleteResume: (id: number) => j<{ ok: boolean }>(`/resumes/${id}`, { method: "DELETE" }),
+
+  builder: (postingId: number) => j<BuilderSession>(`/postings/${postingId}/builder`),
+  startBuilder: (postingId: number) =>
+    j<BuilderSession>(`/postings/${postingId}/builder`, { method: "POST" }),
+  builderReply: (sessionId: number, text: string) =>
+    j<BuilderSession>(`/builder/${sessionId}/reply`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  builderSave: (sessionId: number) =>
+    j<{ id: number; posting_id: number }>(`/builder/${sessionId}/save`, { method: "POST" }),
+  resetBuilder: (postingId: number) =>
+    j<{ ok: boolean }>(`/postings/${postingId}/builder`, { method: "DELETE" }),
 };
+
+export interface BuilderMessage {
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export interface BuilderSession {
+  id: number;
+  posting_id: number;
+  title: string;
+  company: string;
+  url: string | null;
+  base: string | null;
+  model: string | null;
+  status: "open" | "saved";
+  ledger: string | null;
+  draft: string | null;
+  notes: string | null;
+  updated_at: string;
+  messages: BuilderMessage[];
+}
 
 export interface Resume {
   id: number;

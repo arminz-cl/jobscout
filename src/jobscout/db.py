@@ -79,6 +79,30 @@ CREATE TABLE IF NOT EXISTS resumes (
     UNIQUE (posting_id)
 );
 
+-- interactive resume-builder chat: one session per posting, plus its messages
+CREATE TABLE IF NOT EXISTS resume_sessions (
+    id            INTEGER PRIMARY KEY,
+    posting_id    INTEGER NOT NULL REFERENCES postings(id),
+    base          TEXT,                        -- base resume label (A / B)
+    model         TEXT,
+    profile_brief TEXT,                        -- condensed profile, built once at start
+    ledger        TEXT,                        -- running "established facts" the agent maintains
+    draft         TEXT,                        -- current tailored resume markdown
+    notes         TEXT,                        -- verify-before-sending / tailoring notes
+    status        TEXT NOT NULL DEFAULT 'open',-- open | saved
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    UNIQUE (posting_id)
+);
+
+CREATE TABLE IF NOT EXISTS resume_messages (
+    id         INTEGER PRIMARY KEY,
+    session_id INTEGER NOT NULL REFERENCES resume_sessions(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL,                  -- user | assistant
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     id               INTEGER PRIMARY KEY,
     source           TEXT NOT NULL,
@@ -220,6 +244,75 @@ def list_resumes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 def delete_resume(conn: sqlite3.Connection, resume_id: int) -> None:
     conn.execute("DELETE FROM resumes WHERE id = ?", (resume_id,))
     conn.commit()
+
+
+# -- resume-builder sessions -------------------------------------------
+
+
+def get_resume_session(conn: sqlite3.Connection, posting_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM resume_sessions WHERE posting_id = ?", (posting_id,)
+    ).fetchone()
+
+
+def get_resume_session_by_id(conn: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT s.*, p.title, p.company, p.url FROM resume_sessions s "
+        "JOIN postings p ON p.id = s.posting_id WHERE s.id = ?",
+        (session_id,),
+    ).fetchone()
+
+
+def create_resume_session(
+    conn: sqlite3.Connection, posting_id: int, *, base: str, model: str, profile_brief: str
+) -> int:
+    ts = now_iso()
+    cur = conn.execute(
+        "INSERT INTO resume_sessions "
+        "(posting_id, base, model, profile_brief, ledger, draft, notes, status, created_at, updated_at) "
+        "VALUES (?,?,?,?,'','','','open',?,?)",
+        (posting_id, base, model, profile_brief, ts, ts),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def update_resume_session(conn: sqlite3.Connection, session_id: int, **fields) -> None:
+    if not fields:
+        return
+    fields["updated_at"] = now_iso()
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    conn.execute(
+        f"UPDATE resume_sessions SET {cols} WHERE id = ?",
+        (*fields.values(), session_id),
+    )
+    conn.commit()
+
+
+def delete_resume_session(conn: sqlite3.Connection, posting_id: int) -> None:
+    row = conn.execute(
+        "SELECT id FROM resume_sessions WHERE posting_id = ?", (posting_id,)
+    ).fetchone()
+    if row:
+        conn.execute("DELETE FROM resume_messages WHERE session_id = ?", (row["id"],))
+        conn.execute("DELETE FROM resume_sessions WHERE id = ?", (row["id"],))
+        conn.commit()
+
+
+def add_resume_message(conn: sqlite3.Connection, session_id: int, role: str, content: str) -> None:
+    conn.execute(
+        "INSERT INTO resume_messages (session_id, role, content, created_at) VALUES (?,?,?,?)",
+        (session_id, role, content, now_iso()),
+    )
+    conn.commit()
+
+
+def list_resume_messages(conn: sqlite3.Connection, session_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT role, content, created_at FROM resume_messages "
+        "WHERE session_id = ? ORDER BY id",
+        (session_id,),
+    ).fetchall()
 
 
 # -- assessments --------------------------------------------------------------

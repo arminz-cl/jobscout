@@ -6,6 +6,7 @@ import { Runs } from "./components/Runs";
 import { Companies } from "./components/Companies";
 import { Resumes } from "./components/Resumes";
 import { Info } from "./components/Info";
+import { ResumeBuilder } from "./components/ResumeBuilder";
 
 type Tab = "dashboard" | "runs" | "companies" | "postings" | "assessments" | "resumes" | "info";
 const TABS: Tab[] = ["dashboard", "runs", "companies", "postings", "assessments", "resumes", "info"];
@@ -13,13 +14,27 @@ const hashTab = (): Tab => {
   const h = window.location.hash.replace("#", "") as Tab;
   return TABS.includes(h) ? h : "dashboard";
 };
+const hashBuilder = (): number | null => {
+  const m = window.location.hash.match(/^#builder\/(\d+)$/);
+  return m ? Number(m[1]) : null;
+};
 
 export function App() {
   const [tab, setTabState] = useState<Tab>(hashTab);
+  const [builder, setBuilder] = useState<number | null>(hashBuilder);
   const setTab = (t: Tab) => {
     window.location.hash = t;
     setTabState(t);
   };
+
+  useEffect(() => {
+    const onHash = () => {
+      setBuilder(hashBuilder());
+      setTabState(hashTab());
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [err, setErr] = useState<string | null>(null);
   const [runFilter, setRunFilter] = useState<number | null>(null);
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
@@ -70,6 +85,15 @@ export function App() {
       </header>
       <main>
         {err && <div className="error">{err}</div>}
+        {builder != null ? (
+          <ResumeBuilder
+            postingId={builder}
+            onClose={() => {
+              window.location.hash = "postings";
+            }}
+          />
+        ) : (
+          <>
         {tab === "dashboard" && <Dashboard />}
         {tab === "runs" && <Runs onOpenRun={openRun} />}
         {tab === "companies" && <Companies onOpenCompany={openCompany} />}
@@ -84,6 +108,8 @@ export function App() {
         {tab === "assessments" && <Postings mode="assessed" />}
         {tab === "resumes" && <Resumes />}
         {tab === "info" && <Info />}
+          </>
+        )}
       </main>
     </>
   );

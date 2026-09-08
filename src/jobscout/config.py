@@ -67,6 +67,29 @@ class AssessorConfig:
 
 
 @dataclass(slots=True, frozen=True)
+class ResumeConfig:
+    """Provider for the interactive resume builder. Defaults to mirroring the
+    assessor so it works out of the box; a `resume:` block overrides it (e.g.
+    point it at claude-sonnet-5 once ANTHROPIC_API_KEY is set)."""
+
+    provider: str
+    model: str
+    base_url: str | None
+    temperature: float
+    api_key: str | None
+
+    @property
+    def model_tag(self) -> str:
+        if self.provider == "claude":
+            return self.model
+        if self.provider == "ollama":
+            return f"ollama:{self.model}"
+        if self.base_url and "groq" in self.base_url:
+            return f"groq:{self.model}"
+        return f"openai_compat:{self.model}"
+
+
+@dataclass(slots=True, frozen=True)
 class Config:
     profile_dir: Path
     eval_dir: Path
@@ -82,6 +105,7 @@ class Config:
     sort_by: str
     seniority: list[int]
     assessor: AssessorConfig | None = None
+    resume: ResumeConfig | None = None
     query_groups: dict[str, QueryGroup] = field(default_factory=dict)
     mode_groups: list[str] = field(default_factory=list)   # group names active in `mode`
     queries: list[str] = field(default_factory=list)       # flattened queries for `mode`
@@ -204,6 +228,7 @@ def load(path: Path | None = None) -> Config:
         raise ConfigError(f"mode {raw.get('mode', 'casual')!r} resolved to zero queries")
 
     assessor = _resolve_assessor(raw.get("assessor"))
+    resume = _resolve_resume(raw.get("resume"), assessor)
 
     cfg = Config(
         profile_dir=profile_dir,
@@ -220,6 +245,7 @@ def load(path: Path | None = None) -> Config:
         sort_by=raw.get("sort_by", "DD"),
         seniority=list(raw.get("seniority", []) or []),
         assessor=assessor,
+        resume=resume,
         query_groups=query_groups,
         mode_groups=mode_groups,
         queries=queries,
@@ -261,6 +287,46 @@ def _resolve_assessor(raw: dict | None) -> AssessorConfig | None:
         quality_weight=(
             float(raw["quality_weight"]) if raw.get("quality_weight") is not None else None
         ),
+    )
+
+
+def _key_for(provider: str) -> str | None:
+    if provider == "claude":
+        return os.environ.get("ANTHROPIC_API_KEY")
+    if provider == "openai_compat":
+        return os.environ.get("RESUME_API_KEY") or os.environ.get("ASSESSOR_API_KEY") or os.environ.get(
+            "GROQ_API_KEY"
+        )
+    return None
+
+
+def _resolve_resume(raw: dict | None, assessor: AssessorConfig | None) -> ResumeConfig | None:
+    """A `resume:` block, else mirror the assessor, else nothing."""
+    if not raw and assessor is None:
+        return None
+    if not raw:
+        return ResumeConfig(
+            provider=assessor.provider,
+            model=assessor.model,
+            base_url=assessor.base_url,
+            temperature=assessor.temperature,
+            api_key=assessor.api_key,
+        )
+    provider = raw.get("provider") or (assessor.provider if assessor else "openai_compat")
+    if provider not in _ASSESSOR_PROVIDERS:
+        raise ConfigError(f"resume.provider must be one of {sorted(_ASSESSOR_PROVIDERS)}")
+    model = raw.get("model") or (assessor.model if assessor else None)
+    if not model:
+        raise ConfigError("resume.model is required")
+    base_url = raw.get("base_url") or (assessor.base_url if assessor else None)
+    if provider == "ollama" and not base_url:
+        base_url = "http://localhost:11434/v1"
+    return ResumeConfig(
+        provider=provider,
+        model=str(model),
+        base_url=base_url,
+        temperature=float(raw.get("temperature", assessor.temperature if assessor else 0)),
+        api_key=_key_for(provider),
     )
 
 
