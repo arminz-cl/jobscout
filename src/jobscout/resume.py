@@ -162,7 +162,10 @@ How you work each turn:
 
 Return ONLY a JSON object:
 {
-  "reply":     string  — your message to the candidate (analysis + your questions),
+  "reply":     string  — your message to the candidate: a short fit read and your
+                          2-4 questions ONLY. Do NOT paste the resume or the full
+                          gap list here — those are shown separately from resume_md
+                          and open_gaps. Keep it under ~150 words.
   "ledger":    string  — the FULL updated facts ledger (markdown bullets; you rewrite it each turn),
   "resume_md": string  — the FULL current draft resume in markdown,
   "notes":     string  — running "verify before sending" list + what you changed this turn,
